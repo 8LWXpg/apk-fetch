@@ -23,7 +23,7 @@ TESTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Apps refreshed by a no-argument run: <dir> -> <package-id>. Add a line to make
 # an app part of the default set.
 declare -A APPS=(
-  [firefox]=org.mozilla.firefox
+  [newpipe]=org.schabi.newpipe
 )
 
 TRIM='import sys,re

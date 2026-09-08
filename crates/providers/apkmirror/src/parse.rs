@@ -251,92 +251,142 @@ pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
 
-    const SEARCH: &str = include_str!("../tests/firefox/search.html");
-    const SEARCH_NONE: &str = include_str!("../tests/nonexistent/search.html");
-    const APP: &str = include_str!("../tests/firefox/app.html");
-    const VERSION: &str = include_str!("../tests/firefox/version.html");
-    const DL_PAGE: &str = include_str!("../tests/firefox/download-page.html");
-    const STARTING: &str = include_str!("../tests/firefox/download-starting.html");
+    /// Every `tests/<app>/` directory holding a `search.html`. The dir name is the
+    /// app; adding a dir (via `refresh-fixtures.sh <app> <pkg>`) extends coverage
+    /// with no code change.
+    fn app_dirs() -> Vec<(String, PathBuf)> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+        let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(&root)
+            .expect("tests/ dir")
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_dir() && p.join("search.html").is_file())
+            .map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
+            .collect();
+        dirs.sort();
+        assert!(!dirs.is_empty(), "no tests/<app>/ fixture dirs in {root:?}");
+        dirs
+    }
 
-    #[test]
-    fn search_finds_firefox_release() {
-        let hits = parse_search(SEARCH).unwrap();
-        assert!(!hits.is_empty());
-        assert!(hits[0].release_url.contains("/apk/mozilla/firefox"));
-        assert!(hits[0].release_url.ends_with("-release/"));
-        // "Popular / Latest Uploads" widgets must be excluded: every hit is firefox.
-        assert!(
-            hits.iter().all(|h| h.title.to_lowercase().contains("firefox")),
-            "unrelated apps leaked into results: {:?}",
-            hits.iter().map(|h| &h.title).collect::<Vec<_>>()
-        );
+    fn read(dir: &Path, name: &str) -> String {
+        fs::read_to_string(dir.join(name)).unwrap_or_else(|e| panic!("{}: {e}", dir.join(name).display()))
     }
 
     #[test]
-    fn no_results_page_is_not_found() {
-        assert!(matches!(
-            parse_search(SEARCH_NONE),
-            Err(ProviderError::NotFound)
-        ));
+    fn search_pages_parse() {
+        for (app, dir) in app_dirs() {
+            let html = read(&dir, "search.html");
+
+            // A dir whose search page shows the "no results" marker (e.g.
+            // `nonexistent/`) must parse as NotFound — not junk hits from the
+            // "Popular / Latest Uploads" widgets further down the page.
+            if html.contains("No results found matching your query") {
+                assert!(
+                    matches!(parse_search(&html), Err(ProviderError::NotFound)),
+                    "{app}: no-results page didn't parse as NotFound"
+                );
+                continue;
+            }
+
+            let hits = parse_search(&html).unwrap_or_else(|e| panic!("{app}: {e}"));
+            assert!(!hits.is_empty(), "{app}: empty hit list");
+            for h in &hits {
+                assert!(h.release_url.contains("/apk/"), "{app}: {}", h.release_url);
+                assert!(h.release_url.ends_with("-release/"), "{app}: {}", h.release_url);
+                assert!(!h.title.trim().is_empty(), "{app}: blank title");
+            }
+        }
+    }
+
+    #[test]
+    fn download_chains_parse() {
+        for (app, dir) in app_dirs() {
+            if !dir.join("app.html").is_file() {
+                continue; // search-only dir (e.g. `nonexistent/`)
+            }
+
+            let rows = parse_versions(&read(&dir, "app.html"))
+                .unwrap_or_else(|e| panic!("{app}: parse_versions: {e}"));
+            assert!(!rows.is_empty(), "{app}: no version rows");
+            assert!(rows[0].version_page_url.contains("-release/"), "{app}");
+            assert!(
+                rows.iter().any(|r| {
+                    let t = version_token(&r.title);
+                    t.contains('.') && t.starts_with(|c: char| c.is_ascii_digit())
+                }),
+                "{app}: no release-number-shaped versions"
+            );
+            assert!(
+                rows.iter().any(|r| r.uploaded.as_deref().is_some_and(|d| d.contains("UTC"))),
+                "{app}: no upload dates parsed"
+            );
+
+            let variants = parse_variants(&read(&dir, "version.html"));
+            assert!(!variants.is_empty(), "{app}: no variant rows");
+            for v in &variants {
+                assert!(v.download_page_url.contains("-download/"), "{app}: {}", v.download_page_url);
+            }
+            let picked = choose_variant(&variants, "arm64-v8a").expect("a variant");
+            // If the app publishes any plain APK, arch selection must land on one.
+            if variants.iter().any(|v| v.kind.eq_ignore_ascii_case("APK")) {
+                assert!(picked.kind.eq_ignore_ascii_case("APK"), "{app}: picked {:?}", picked.kind);
+            }
+
+            let btn = parse_download_button(&read(&dir, "download-page.html"))
+                .unwrap_or_else(|e| panic!("{app}: parse_download_button: {e}"));
+            assert!(btn.contains("/download/?key="), "{app}: {btn}");
+            let final_url = parse_final_link(&read(&dir, "download-starting.html"))
+                .unwrap_or_else(|e| panic!("{app}: parse_final_link: {e}"));
+            assert!(
+                final_url.contains("download.php") || final_url.contains("downloadr"),
+                "{app}: {final_url}"
+            );
+        }
+    }
+
+    fn variant(kind: &str, arch: &str) -> Variant {
+        Variant {
+            version: "1.0".into(),
+            arch: arch.into(),
+            kind: kind.into(),
+            download_page_url: "https://x/-download/".into(),
+        }
+    }
+
+    #[test]
+    fn choose_variant_prefers_apk_then_exact_arch() {
+        let vs = vec![
+            variant("BUNDLE", "arm64-v8a"),
+            variant("APK", "armeabi-v7a"),
+            variant("APK", "arm64-v8a"),
+            variant("APK", "universal"),
+        ];
+        // exact-arch APK wins over an arch-matching bundle and other APKs
+        assert_eq!(choose_variant(&vs, "arm64-v8a").unwrap().arch, "arm64-v8a");
+        assert_eq!(choose_variant(&vs, "armeabi-v7a").unwrap().arch, "armeabi-v7a");
+        // no exact match -> universal APK, never the bundle
+        let picked = choose_variant(&vs, "x86").unwrap();
+        assert_eq!(picked.kind, "APK");
+        assert_eq!(picked.arch, "universal");
+
+        // bundle-only app: arch match on the bundle beats an off-arch bundle
+        let bundles = vec![variant("BUNDLE", "universal"), variant("BUNDLE", "arm64-v8a")];
+        assert_eq!(choose_variant(&bundles, "arm64-v8a").unwrap().arch, "arm64-v8a");
     }
 
     #[test]
     fn derives_app_page() {
         assert_eq!(
-            app_page_from_release(
-                "https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/"
-            )
-            .unwrap(),
+            app_page_from_release("https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/")
+                .unwrap(),
             "https://www.apkmirror.com/apk/mozilla/firefox/"
-        );
-    }
-
-    #[test]
-    fn parses_version_list() {
-        let rows = parse_versions(APP).unwrap();
-        assert!(!rows.is_empty());
-        assert!(rows[0].version_page_url.contains("-release/"));
-        assert!(rows.iter().any(|r| r.title.to_lowercase().contains("firefox")));
-        // version tokens look like release numbers
-        assert!(rows.iter().any(|r| {
-            let t = version_token(&r.title);
-            t.contains('.') && t.chars().next().is_some_and(|c| c.is_ascii_digit())
-        }));
-        assert!(
-            rows[0].uploaded.as_deref().is_some_and(|d| d.contains("UTC")),
-            "expected an upload date: {:?}",
-            rows[0].uploaded
         );
     }
 
     #[test]
     fn version_token_extracts_number() {
         assert_eq!(version_token("Firefox Fast & Private Browser 155.0.1"), "155.0.1");
-    }
-
-    #[test]
-    fn parses_variants_and_picks_by_arch() {
-        let variants = parse_variants(VERSION);
-        assert!(!variants.is_empty(), "expected variant rows");
-        for v in &variants {
-            assert!(v.download_page_url.contains("-download/"));
-        }
-        // Firefox lists an arm64-v8a APK plus universal bundles / a universal APK.
-        let arm = choose_variant(&variants, "arm64-v8a").unwrap();
-        assert!(arm.kind.eq_ignore_ascii_case("APK"));
-        assert!(arm.arch.to_lowercase().contains("arm64-v8a"));
-
-        // An arch with no exact match falls back to a universal APK, never a bundle.
-        let x86 = choose_variant(&variants, "x86").unwrap();
-        assert!(x86.kind.eq_ignore_ascii_case("APK"));
-    }
-
-    #[test]
-    fn walks_download_chain() {
-        let btn = parse_download_button(DL_PAGE).unwrap();
-        assert!(btn.contains("/download/?key="));
-        let final_url = parse_final_link(STARTING).unwrap();
-        assert!(final_url.contains("download.php?id=") || final_url.contains("downloadr"));
     }
 }

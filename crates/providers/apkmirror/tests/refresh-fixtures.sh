@@ -24,7 +24,7 @@ TESTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # bogus id kept for the "no results" parser test. Add a line to make an app part
 # of the default set.
 declare -A APPS=(
-  [firefox]=org.mozilla.firefox
+  [newpipe]=org.schabi.newpipe
   [nonexistent]=com.example.does.not.exist.xyz
 )
 

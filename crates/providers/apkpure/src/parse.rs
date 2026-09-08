@@ -140,39 +140,82 @@ pub fn download_url(pkg: &str, version: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
 
-    const SEARCH: &str = include_str!("../tests/firefox/search.html");
-    const APP: &str = include_str!("../tests/firefox/app.html");
-    const VERSIONS: &str = include_str!("../tests/firefox/versions.html");
+    /// Every `tests/<app>/` directory with a `search.html`. Adding a dir (via
+    /// `refresh-fixtures.sh <app> <pkg>`) extends coverage with no code change.
+    fn app_dirs() -> Vec<(String, PathBuf)> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+        let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(&root)
+            .expect("tests/ dir")
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_dir() && p.join("search.html").is_file())
+            .map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
+            .collect();
+        dirs.sort();
+        assert!(!dirs.is_empty(), "no tests/<app>/ fixture dirs in {root:?}");
+        dirs
+    }
 
-    #[test]
-    fn search_extracts_package_ids() {
-        let hits = parse_search(SEARCH).unwrap();
-        assert!(hits.iter().any(|h| h.package == "org.mozilla.firefox"));
-        let ff = hits.iter().find(|h| h.package == "org.mozilla.firefox").unwrap();
-        assert!(ff.title.to_lowercase().contains("firefox"));
-        // no dupes
-        let mut pkgs: Vec<_> = hits.iter().map(|h| &h.package).collect();
-        let n = pkgs.len();
-        pkgs.sort();
-        pkgs.dedup();
-        assert_eq!(pkgs.len(), n);
+    fn read(dir: &Path, name: &str) -> String {
+        fs::read_to_string(dir.join(name)).unwrap_or_else(|e| panic!("{}: {e}", dir.join(name).display()))
+    }
+
+    /// The package id an app page is for — the last segment of its canonical URL.
+    fn app_package(app_html: &str) -> Option<String> {
+        let doc = Html::parse_document(app_html);
+        let href = doc
+            .select(&sel(r#"link[rel="canonical"]"#))
+            .find_map(|el| el.value().attr("href"))?;
+        let seg = href.trim_end_matches('/').rsplit('/').next()?;
+        seg.contains('.').then(|| seg.to_string())
     }
 
     #[test]
-    fn latest_version_from_app_page() {
-        let v = latest_version(APP).expect("a version marker");
-        assert!(!v.contains('('), "(code) suffix not stripped: {v}");
-        assert!(v.contains('.') && v.chars().next().unwrap().is_ascii_digit(), "{v}");
+    fn search_pages_parse() {
+        for (app, dir) in app_dirs() {
+            let hits = parse_search(&read(&dir, "search.html"))
+                .unwrap_or_else(|e| panic!("{app}: parse_search: {e}"));
+            assert!(!hits.is_empty(), "{app}: empty hit list");
+            for h in &hits {
+                assert!(h.package.contains('.'), "{app}: bad package {:?}", h.package);
+                assert!(!h.title.trim().is_empty(), "{app}: blank title");
+            }
+            // no duplicate packages
+            let mut pkgs: Vec<_> = hits.iter().map(|h| &h.package).collect();
+            let n = pkgs.len();
+            pkgs.sort();
+            pkgs.dedup();
+            assert_eq!(pkgs.len(), n, "{app}: duplicate packages in results");
+
+            // the app this dir is named for shows up in its own search results
+            if let Some(pkg) = app_package(&read(&dir, "app.html")) {
+                assert!(hits.iter().any(|h| h.package == pkg), "{app}: {pkg} missing from results");
+            }
+        }
     }
 
     #[test]
-    fn versions_page_lists_versions_with_codes() {
-        let rows = parse_versions(VERSIONS).unwrap();
-        assert!(rows.len() > 3);
-        assert!(rows.iter().all(|r| r.version_code.is_some()));
-        // version strings are release-number-shaped and free of the (code) suffix
-        assert!(rows.iter().all(|r| !r.version.contains('(') && r.version.contains('.')));
+    fn app_and_versions_pages_parse() {
+        for (app, dir) in app_dirs() {
+            let v = latest_version(&read(&dir, "app.html"))
+                .unwrap_or_else(|| panic!("{app}: no version marker on app page"));
+            assert!(!v.contains('('), "{app}: (code) suffix not stripped: {v}");
+            assert!(
+                v.contains('.') && v.starts_with(|c: char| c.is_ascii_digit()),
+                "{app}: odd version {v}"
+            );
+
+            let rows = parse_versions(&read(&dir, "versions.html"))
+                .unwrap_or_else(|e| panic!("{app}: parse_versions: {e}"));
+            assert!(rows.len() > 3, "{app}: only {} versions", rows.len());
+            assert!(rows.iter().all(|r| r.version_code.is_some()), "{app}: a row has no version code");
+            assert!(
+                rows.iter().all(|r| !r.version.contains('(') && r.version.contains('.')),
+                "{app}: a version string is malformed"
+            );
+        }
     }
 
     #[test]
