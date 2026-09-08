@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
 #
 # Re-fetch the APKMirror HTML fixtures that src/parse.rs tests run against.
+# Fixtures live in tests/<app>/*.html — one directory per app.
 #
 #   bash crates/providers/apkmirror/tests/refresh-fixtures.sh
+#       refresh every app directory that already exists
+#
+#   bash crates/providers/apkmirror/tests/refresh-fixtures.sh <app> <package-id>
+#       add (or refresh just) one app, e.g.  focus  org.mozilla.focus
 #
 # Run this when APKMirror changes its markup: check the diff, then adjust the
-# selectors in src/parse.rs. The tests assert on structure, not specific version
-# numbers, so a refresh rarely breaks them. Fixtures are trimmed of
-# <script>/<style>/<svg> to keep the repo small; that removes no structure the
-# parsers use. APKPure has its own script at ../../apkpure/tests/.
+# selectors in src/parse.rs. Tests assert on structure, not version numbers, so a
+# refresh rarely breaks them. Fixtures are trimmed of <script>/<style>/<svg>.
+# APKPure has its own script at ../../apkpure/tests/.
 
 set -euo pipefail
 
 UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 BASE='https://www.apkmirror.com'
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/fixtures" && pwd)"
+TESTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Apps refreshed by a no-argument run: <dir> -> <package-id>. `nonexistent` is a
+# bogus id kept for the "no results" parser test. Add a line to make an app part
+# of the default set.
+declare -A APPS=(
+  [firefox]=org.mozilla.firefox
+  [nonexistent]=com.example.does.not.exist.xyz
+)
 
 TRIM='import sys,re
 h=sys.stdin.read()
@@ -23,20 +35,41 @@ for t in ("script","style","svg","noscript"):
 sys.stdout.write(h)'
 
 get()  { curl -fsSL -A "$UA" "$1"; }
-save() { python -c "$TRIM" > "$DIR/$1"; echo "  $1  ($(wc -c < "$DIR/$1") bytes)"; }
+save() { local d="$1" f="$2"; mkdir -p "$TESTS/$d"; python -c "$TRIM" > "$TESTS/$d/$f"
+         echo "  $d/$f  ($(wc -c < "$TESTS/$d/$f") bytes)"; }
 
-get "$BASE/?post_type=app_release&searchtype=apk&s=org.mozilla.firefox"          | save search-firefox.html
-get "$BASE/?post_type=app_release&searchtype=apk&s=com.example.does.not.exist.xyz" | save search-no-results.html
-get "$BASE/apk/mozilla/firefox/"                                                 | save app-firefox.html
+refresh_app() {
+  local app="$1" pkg="$2"
+  echo "$app  ($pkg)"
+  get "$BASE/?post_type=app_release&searchtype=apk&s=$pkg" | save "$app" search.html
 
-# latest release page, discovered from the app page
-REL=$(grep -oE '/apk/mozilla/firefox/firefox[a-z0-9-]+-release/' "$DIR/app-firefox.html" | head -1)
-get "$BASE$REL" | save version-firefox.html
+  # A bogus package only needs the (empty) search page.
+  grep -q 'No results found matching your query' "$TESTS/$app/search.html" && return 0
 
-# variant -> download page -> "starting" page (each URL scraped from the previous)
-DLP=$(grep -oE '/apk/mozilla/firefox/[^"]+-android-apk-download/' "$DIR/version-firefox.html" | head -1)
-get "$BASE$DLP" | save download-page-firefox.html
-BTN=$(grep -oE '/apk/mozilla/firefox/[^"]+/download/\?key=[a-f0-9]+' "$DIR/download-page-firefox.html" | head -1)
-get "$BASE$BTN" | save download-starting-firefox.html
+  # Derive the app page from the first non-beta search result, then walk the
+  # download chain (each URL is scraped from the previous page). The beta/alpha
+  # filter mirrors ApkMirror::top_release_url.
+  local rel org repo
+  rel=$(grep -oE '/apk/[a-z0-9-]+/[a-z0-9-]+/[a-z0-9-]+-release/' "$TESTS/$app/search.html" \
+        | grep -vE '/apk/[^/]+/[a-z0-9-]*-(beta|alpha|dev|canary)/' | head -1)
+  org=$(cut -d/ -f3 <<<"$rel"); repo=$(cut -d/ -f4 <<<"$rel")
+  get "$BASE/apk/$org/$repo/" | save "$app" app.html
+
+  local relpage dlp btn
+  relpage=$(grep -oE "/apk/$org/$repo/[a-z0-9-]+-release/" "$TESTS/$app/app.html" | head -1)
+  get "$BASE$relpage" | save "$app" version.html
+  dlp=$(grep -oE "/apk/$org/$repo/[^\"]+-android-apk-download/" "$TESTS/$app/version.html" | head -1)
+  get "$BASE$dlp" | save "$app" download-page.html
+  btn=$(grep -oE "/apk/$org/$repo/[^\"]+/download/\?key=[a-f0-9]+" "$TESTS/$app/download-page.html" | head -1)
+  get "$BASE$btn" | save "$app" download-starting.html
+}
+
+if [[ $# -eq 2 ]]; then
+  refresh_app "$1" "$2"
+elif [[ $# -eq 0 ]]; then
+  for app in "${!APPS[@]}"; do refresh_app "$app" "${APPS[$app]}"; done
+else
+  echo "usage: $0 [<app> <package-id>]" >&2; exit 2
+fi
 
 echo "done — now: cargo test -p apk-fetch-apkmirror"

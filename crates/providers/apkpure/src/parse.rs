@@ -141,9 +141,9 @@ pub fn download_url(pkg: &str, version: &str) -> String {
 mod tests {
     use super::*;
 
-    const SEARCH: &str = include_str!("../tests/fixtures/search-firefox.html");
-    const APP: &str = include_str!("../tests/fixtures/app-firefox.html");
-    const VERSIONS: &str = include_str!("../tests/fixtures/versions-firefox.html");
+    const SEARCH: &str = include_str!("../tests/firefox/search.html");
+    const APP: &str = include_str!("../tests/firefox/app.html");
+    const VERSIONS: &str = include_str!("../tests/firefox/versions.html");
 
     #[test]
     fn search_extracts_package_ids() {

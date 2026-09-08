@@ -252,12 +252,12 @@ pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 mod tests {
     use super::*;
 
-    const SEARCH: &str = include_str!("../tests/fixtures/search-firefox.html");
-    const SEARCH_NONE: &str = include_str!("../tests/fixtures/search-no-results.html");
-    const APP: &str = include_str!("../tests/fixtures/app-firefox.html");
-    const VERSION: &str = include_str!("../tests/fixtures/version-firefox.html");
-    const DL_PAGE: &str = include_str!("../tests/fixtures/download-page-firefox.html");
-    const STARTING: &str = include_str!("../tests/fixtures/download-starting-firefox.html");
+    const SEARCH: &str = include_str!("../tests/firefox/search.html");
+    const SEARCH_NONE: &str = include_str!("../tests/nonexistent/search.html");
+    const APP: &str = include_str!("../tests/firefox/app.html");
+    const VERSION: &str = include_str!("../tests/firefox/version.html");
+    const DL_PAGE: &str = include_str!("../tests/firefox/download-page.html");
+    const STARTING: &str = include_str!("../tests/firefox/download-starting.html");
 
     #[test]
     fn search_finds_firefox_release() {
@@ -322,7 +322,7 @@ mod tests {
         for v in &variants {
             assert!(v.download_page_url.contains("-download/"));
         }
-        // Firefox 155 lists an arm64-v8a APK plus universal bundles/APK.
+        // Firefox lists an arm64-v8a APK plus universal bundles / a universal APK.
         let arm = choose_variant(&variants, "arm64-v8a").unwrap();
         assert!(arm.kind.eq_ignore_ascii_case("APK"));
         assert!(arm.arch.to_lowercase().contains("arm64-v8a"));
