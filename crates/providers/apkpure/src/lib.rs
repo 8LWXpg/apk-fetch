@@ -1,13 +1,19 @@
-//! APKPure provider — stub this session. Exists to prove the [`Provider`] trait
-//! boundary supports a second source cleanly. All methods return `NotFound` so
-//! the fallback resolver treats it as "nothing here" rather than panicking.
+//! APKPure provider. APKPure is package-id-addressable — `/x/{pkg}` resolves to
+//! the app page and `d.apkpure.com/b/APK/{pkg}?version=...` 302s straight to the
+//! APK — so there's no search-walk to reach a download.
+//!
+//! `arch` is accepted but not honoured: APKPure's web endpoint serves one build
+//! per app regardless of ABI, so resolved `arch` is left `None`.
+
+mod parse;
 
 use apk_fetch_core::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use apk_fetch_fetch::HttpFetcher;
+use apk_fetch_fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 
+const NAME: &str = "apkpure";
+
 pub struct ApkPure {
-    #[allow(dead_code)]
     fetcher: HttpFetcher,
 }
 
@@ -28,26 +34,66 @@ impl Default for ApkPure {
 #[async_trait]
 impl Provider for ApkPure {
     fn name(&self) -> &'static str {
-        "apkpure"
+        NAME
     }
 
-    async fn search(&self, _query: &str) -> Result<Vec<AppResult>, ProviderError> {
-        Err(ProviderError::NotFound) // TODO(apkpure): implement
+    async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError> {
+        let url = format!("{}/search?q={}", parse::BASE_URL, query.trim().replace(' ', "+"));
+        let html = self.fetcher.get_text(&url).await?;
+        Ok(parse::parse_search(&html)?
+            .into_iter()
+            .map(|h| AppResult {
+                package: h.package,
+                title: h.title,
+                developer: h.developer,
+                provider: NAME.to_string(),
+            })
+            .collect())
     }
 
-    async fn versions(&self, _pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
-        Err(ProviderError::NotFound) // TODO(apkpure): implement
+    async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+        let url = format!("{}/x/{}/versions", parse::BASE_URL, pkg);
+        let html = self.fetcher.get_text(&url).await?;
+        Ok(parse::parse_versions(&html)?
+            .into_iter()
+            .map(|r| VersionInfo {
+                version: r.version,
+                version_code: r.version_code,
+                uploaded: None,
+                provider: NAME.to_string(),
+            })
+            .collect())
     }
 
     async fn download_url(
         &self,
-        _pkg: &str,
-        _version: Option<&str>,
+        pkg: &str,
+        version: Option<&str>,
+        _arch: &str,
     ) -> Result<DownloadTarget, ProviderError> {
-        Err(ProviderError::NotFound) // TODO(apkpure): implement
-    }
+        // `endpoint_version` is what we hand apkpure; `label` is for the filename.
+        // When no version is pinned we ask for "latest" (a specific version string
+        // isn't always URL-safe) but still resolve the real one for the name — the
+        // app-page GET also 404s -> NotFound for an unknown package.
+        let (endpoint_version, label) = match version {
+            Some(v) => (v.to_string(), v.to_string()),
+            None => {
+                let html = self
+                    .fetcher
+                    .get_text(&format!("{}/x/{}", parse::BASE_URL, pkg))
+                    .await?;
+                let label = parse::latest_version(&html).ok_or(ProviderError::NotFound)?;
+                ("latest".to_string(), label)
+            }
+        };
 
-    async fn check(&self) -> Result<(), ProviderError> {
-        Ok(()) // stub is always "up"
+        Ok(DownloadTarget {
+            filename: apk_fetch_core::download_filename(pkg, &label, None, "apk"),
+            url: parse::download_url(pkg, &endpoint_version),
+            version: Some(label),
+            arch: None,
+            provider: NAME.to_string(),
+            headers: Vec::new(),
+        })
     }
 }

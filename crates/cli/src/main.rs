@@ -74,6 +74,9 @@ enum Command {
         provider: Option<String>,
         #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure")]
         priority: Vec<String>,
+        /// Preferred ABI; providers fall back to a universal build if unavailable.
+        #[arg(long, default_value = "arm64-v8a")]
+        arch: String,
         /// Output directory.
         #[arg(long, default_value = ".")]
         output: PathBuf,
@@ -120,6 +123,7 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
             version,
             provider,
             priority,
+            arch,
             output,
             fallback,
         } => {
@@ -129,6 +133,7 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
                 version.as_deref(),
                 provider.as_deref(),
                 &priority,
+                &arch,
                 &output,
                 fallback,
                 cli.json,

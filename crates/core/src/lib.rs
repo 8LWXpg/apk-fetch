@@ -34,6 +34,8 @@ pub struct DownloadTarget {
     pub url: String,
     pub filename: String,
     pub version: Option<String>,
+    /// Architecture of the resolved variant (e.g. `arm64-v8a`, `universal`).
+    pub arch: Option<String>,
     pub provider: String,
     #[serde(default)]
     pub headers: Vec<(String, String)>,
@@ -56,15 +58,32 @@ pub enum ProviderError {
     RateLimited,
 }
 
+/// `{pkg}-{version}-{arch}.{ext}`, sanitised for a filesystem. `arch` is dropped
+/// from the name when unknown. `ext` is `"apk"` or `"xapk"`.
+pub fn download_filename(pkg: &str, version: &str, arch: Option<&str>, ext: &str) -> String {
+    let stem = match arch {
+        Some(a) if !a.is_empty() => format!("{pkg}-{version}-{a}"),
+        _ => format!("{pkg}-{version}"),
+    };
+    let cleaned: String = stem
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .collect();
+    format!("{cleaned}.{ext}")
+}
+
 #[async_trait]
 pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
     async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
     async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
+    /// Resolve a download. `arch` is an ABI preference (e.g. `arm64-v8a`); a
+    /// provider falls back to a universal build if it has no exact match.
     async fn download_url(
         &self,
         pkg: &str,
         version: Option<&str>,
+        arch: &str,
     ) -> Result<DownloadTarget, ProviderError>;
 
     /// Lightweight reachability probe for `providers check`. Default: a canned
@@ -157,11 +176,12 @@ impl ProviderRegistry {
         &self,
         pkg: &str,
         version: Option<&str>,
+        arch: &str,
         order: &[&str],
     ) -> Result<DownloadTarget, ResolveError> {
         let mut attempts = Vec::new();
         for provider in self.ordered(order) {
-            match provider.download_url(pkg, version).await {
+            match provider.download_url(pkg, version, arch).await {
                 Ok(target) => return Ok(target),
                 Err(e) => attempts.push((provider.name().to_string(), e)),
             }
@@ -170,5 +190,27 @@ impl ProviderRegistry {
             pkg: pkg.to_string(),
             attempts,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::download_filename;
+
+    #[test]
+    fn filename_shape() {
+        assert_eq!(
+            download_filename("org.mozilla.firefox", "155.0.1", Some("arm64-v8a"), "apk"),
+            "org.mozilla.firefox-155.0.1-arm64-v8a.apk"
+        );
+        assert_eq!(
+            download_filename("org.mozilla.firefox", "155.0.1", None, "xapk"),
+            "org.mozilla.firefox-155.0.1.xapk"
+        );
+        // path separators from a slug-style id get scrubbed
+        assert_eq!(
+            download_filename("mozilla/firefox", "1.0", Some("universal"), "apk"),
+            "mozilla_firefox-1.0-universal.apk"
+        );
     }
 }

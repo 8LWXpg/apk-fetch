@@ -116,6 +116,7 @@ pub async fn get(
     version: Option<&str>,
     provider: Option<&str>,
     priority: &[String],
+    arch: &str,
     output: &Path,
     fallback: bool,
     json: bool,
@@ -125,14 +126,14 @@ pub async fn get(
             .get(name)
             .ok_or_else(|| AppError::from(anyhow!("unknown provider '{name}'")))?;
         info!("resolving {} via {}...", pkg, name);
-        p.download_url(pkg, version)
+        p.download_url(pkg, version, arch)
             .await
             .map_err(|e| provider_err(name, e))?
     } else if fallback {
         let ord = order(None, priority);
         info!("resolving {} (fallback: {})...", pkg, ord.join(" -> "));
         registry
-            .resolve_with_fallback(pkg, version, &ord)
+            .resolve_with_fallback(pkg, version, arch, &ord)
             .await
             .map_err(resolve_err)?
     } else {
@@ -141,7 +142,7 @@ pub async fn get(
             .get(name)
             .ok_or_else(|| AppError::from(anyhow!("unknown provider '{name}'")))?;
         info!("resolving {} via {}...", pkg, name);
-        p.download_url(pkg, version)
+        p.download_url(pkg, version, arch)
             .await
             .map_err(|e| provider_err(name, e))?
     };
@@ -175,6 +176,7 @@ pub async fn get(
                 "path": dest.display().to_string(),
                 "provider": target.provider,
                 "version": target.version,
+                "arch": target.arch,
             })
         );
     } else {

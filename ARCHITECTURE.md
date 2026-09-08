@@ -10,8 +10,8 @@ requests fails over to the next instead of taking the whole tool down.
 |---|---|
 | `apk-fetch-core` | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. |
 | `apk-fetch-fetch` | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection. |
-| `apk-fetch-apkmirror` | APKMirror provider — real implementation. |
-| `apk-fetch-apkpure` | APKPure provider — stub (proves the trait boundary takes a second source). |
+| `apk-fetch-apkmirror` | APKMirror provider — search-walk to the download. |
+| `apk-fetch-apkpure` | APKPure provider — package-id-addressable, no HTML walk needed for downloads. |
 | `apk-fetch` (cli) | clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
 
 Dependency direction is strictly `cli → providers → fetch → core`. `core` depends
@@ -25,10 +25,17 @@ pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
     async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
     async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
-    async fn download_url(&self, pkg: &str, version: Option<&str>) -> Result<DownloadTarget, ProviderError>;
+    async fn download_url(&self, pkg: &str, version: Option<&str>, arch: &str) -> Result<DownloadTarget, ProviderError>;
     async fn check(&self) -> Result<(), ProviderError>; // default: a canned search
 }
 ```
+
+`arch` is an ABI *preference* (`--arch`, default `arm64-v8a`), not a demand: a
+provider that has no exact match falls back to a universal build, and one that
+serves a single build per app (APKPure) ignores it. The resolved variant's arch
+comes back in `DownloadTarget.arch` and in the filename,
+`{pkg}-{version}-{arch}.{apk|xapk}` (`core::download_filename`; `arch` is dropped
+from the name when unknown, `xapk` when the variant is a bundle).
 
 The **package id** (`org.mozilla.firefox`) is the only cross-provider identifier.
 Each provider is responsible, end to end, for mapping that id to a download on its
@@ -53,15 +60,25 @@ search (query = the package id), takes the top hit, then walks:
 ```
 search results  ─▶ app page (version list)  ─▶ variants table
                                                     │
-        download page ◀── (pick universal/nodpi APK variant)
-             │
+        download page ◀── choose_variant(arch): exact-arch APK,
+             │                else universal APK, else any APK, else bundle
      "download starting" page ─▶ APK URL (download.php, needs Referer)
 ```
 
-Pure parsers live in `apkmirror/src/parse.rs` and are unit-tested against saved
-HTML fixtures in `apkmirror/tests/fixtures/` — no network in tests. CSS selectors
-are `const &str` in that file; they move to config only if a real breakage proves
-it's needed.
+### APKPure resolution flow
+
+APKPure is package-id-addressable: `/x/{pkg}` resolves to the app page and
+`d.apkpure.com/b/APK/{pkg}?version={v}` 302s straight to the APK. `download_url`
+only touches the app page to read the latest version string (and to 404 →
+`NotFound`); with `--version` pinned it skips even that.
+
+### Fixtures
+
+Pure parsers live in each provider's `src/parse.rs`, unit-tested against saved
+HTML in `tests/fixtures/` — no network in tests. Regenerate them with
+`scripts/refresh-fixtures.sh` after a site changes; the tests assert on structure,
+not specific version numbers, so a refresh rarely breaks them. CSS selectors are
+`const &str` in `parse.rs`; they move to config only if a real breakage proves it.
 
 ## Why "blocked" is a typed error
 
@@ -99,9 +116,15 @@ every Linux). `HttpFetcher` still owns throttle, retry, and block detection —
 `curl` is just the transport. If `curl` is missing, every fetch fails with a
 `Network` error naming it.
 
-Genuine blocks (a real challenge `curl` also can't pass, a 403/429, a body
-signature) still map to `ProviderError::Blocked` and drive failover — see
+We send **only** the User-Agent. Adding a lone `Accept-Language` on top of curl's
+fingerprint is enough to get APKPure's WAF to 403 — real browsers send a dozen
+correlated headers or none of this matters, and a half-set reads as a bot. Genuine
+blocks (a challenge `curl` also can't pass, a 403/429, a body signature) still map
+to `ProviderError::Blocked` and drive failover — see
 `fetch::{looks_blocked, map_http_status}`.
+
+`download_to_file` also rejects a non-ZIP payload: some mirror download endpoints
+answer `200` with an HTML landing page, and an APK/XAPK must start with `PK`.
 
 ## Exit codes (CLI)
 

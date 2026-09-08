@@ -40,22 +40,26 @@ const BLOCK_SIGNATURES: &[&str] = &[
     "Enable JavaScript and cookies to continue",
 ];
 
-/// Browser-ish request headers curl doesn't send by default.
-const BROWSER_HEADERS: &[&str] = &[
-    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language: en-US,en;q=0.9",
-    "Upgrade-Insecure-Requests: 1",
-    "Sec-Fetch-Dest: document",
-    "Sec-Fetch-Mode: navigate",
-    "Sec-Fetch-Site: none",
-];
-
 fn network_err(e: impl std::fmt::Display) -> ProviderError {
     ProviderError::Network(std::io::Error::other(e.to_string()))
 }
 
 fn looks_blocked(body: &str) -> bool {
     BLOCK_SIGNATURES.iter().any(|sig| body.contains(sig))
+}
+
+/// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
+/// `PK\x05\x06`. An empty or missing file fails the check.
+async fn starts_with_zip_magic(path: &std::path::Path) -> bool {
+    use tokio::io::AsyncReadExt;
+    let Ok(mut f) = tokio::fs::File::open(path).await else {
+        return false;
+    };
+    let mut head = [0u8; 4];
+    match f.read_exact(&mut head).await {
+        Ok(_) => head == *b"PK\x03\x04" || head == *b"PK\x05\x06",
+        Err(_) => false,
+    }
 }
 
 /// curl exit codes worth retrying (connect / resolve / timeout / recv).
@@ -122,9 +126,9 @@ impl HttpFetcher {
             "-A",
             USER_AGENT,
         ]);
-        for h in BROWSER_HEADERS {
-            cmd.arg("-H").arg(h);
-        }
+        // Just the UA: mirror-site WAFs (APKPure's especially) flag a lone
+        // `Accept-Language` on top of curl's fingerprint, and neither site needs
+        // more than the UA to serve pages.
         for (k, v) in headers {
             cmd.arg("-H").arg(format!("{k}: {v}"));
         }
@@ -148,7 +152,7 @@ impl HttpFetcher {
                 .arg("\n%{http_code}")
                 .output()
                 .await
-                .map_err(|e| network_err(format!("spawning curl: {e}")))?;
+                .map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
 
             if !output.status.success() {
                 let code = output.status.code();
@@ -203,7 +207,7 @@ impl HttpFetcher {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| network_err(format!("spawning curl: {e}")))?;
+            .map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
 
         loop {
             tokio::select! {
@@ -223,6 +227,14 @@ impl HttpFetcher {
                             "curl download failed ({status}): {}",
                             err.trim()
                         )));
+                    }
+                    // APK/XAPK are ZIP: a non-`PK` payload is an error/landing page
+                    // that came back 200 (some mirror download endpoints do this).
+                    if !starts_with_zip_magic(dest).await {
+                        let _ = tokio::fs::remove_file(dest).await;
+                        return Err(network_err(
+                            "downloaded file is not an APK (server returned a non-package response)",
+                        ));
                     }
                     return Ok(());
                 }

@@ -59,12 +59,6 @@ impl Default for ApkMirror {
     }
 }
 
-fn sanitize_filename(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
-        .collect()
-}
-
 #[async_trait]
 impl Provider for ApkMirror {
     fn name(&self) -> &'static str {
@@ -102,8 +96,8 @@ impl Provider for ApkMirror {
             .into_iter()
             .map(|r| VersionInfo {
                 version: parse::version_token(&r.title),
-                version_code: None,
-                uploaded: None,
+                version_code: None, // only on the per-version variants page
+                uploaded: r.uploaded,
                 provider: NAME.to_string(),
             })
             .collect())
@@ -113,6 +107,7 @@ impl Provider for ApkMirror {
         &self,
         pkg: &str,
         version: Option<&str>,
+        arch: &str,
     ) -> Result<DownloadTarget, ProviderError> {
         // 1. Locate the version page.
         let version_page = match version {
@@ -134,15 +129,23 @@ impl Provider for ApkMirror {
         //    redirected straight onto a download page (single-variant app).
         let version_html = self.fetcher.get_text(&version_page).await?;
         let variants = parse::parse_variants(&version_html);
-        let (resolved_version, download_page_html) = if variants.is_empty() {
-            (version.map(str::to_string), version_html)
-        } else {
-            let v = parse::choose_variant(&variants).ok_or(ProviderError::NotFound)?;
-            (
-                Some(v.version.clone()),
-                self.fetcher.get_text(&v.download_page_url).await?,
-            )
-        };
+        let (resolved_version, resolved_arch, is_bundle, download_page_html) =
+            if variants.is_empty() {
+                (version.map(str::to_string), None, false, version_html)
+            } else {
+                let v = parse::choose_variant(&variants, arch).ok_or(ProviderError::NotFound)?;
+                let arch_token = v
+                    .arch
+                    .split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                    .find(|t| !t.is_empty())
+                    .map(str::to_string);
+                (
+                    Some(v.version.clone()),
+                    arch_token,
+                    v.kind.eq_ignore_ascii_case("BUNDLE"),
+                    self.fetcher.get_text(&v.download_page_url).await?,
+                )
+            };
 
         // 3. download page -> "starting" page -> APK URL.
         let button_url = parse::parse_download_button(&download_page_html)?;
@@ -150,10 +153,17 @@ impl Provider for ApkMirror {
         let apk_url = parse::parse_final_link(&starting_html)?;
 
         let version_label = resolved_version.unwrap_or_else(|| "latest".to_string());
+        let ext = if is_bundle { "xapk" } else { "apk" };
         Ok(DownloadTarget {
-            filename: sanitize_filename(&format!("{pkg}_{version_label}.apk")),
+            filename: apk_fetch_core::download_filename(
+                pkg,
+                &version_label,
+                resolved_arch.as_deref(),
+                ext,
+            ),
             url: apk_url,
             version: Some(version_label),
+            arch: resolved_arch,
             provider: NAME.to_string(),
             // APKMirror's download.php checks the referring download page.
             headers: vec![("Referer".to_string(), button_url)],

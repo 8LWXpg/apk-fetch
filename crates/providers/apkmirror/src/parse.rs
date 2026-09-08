@@ -13,7 +13,9 @@ pub const BASE_URL: &str = "https://www.apkmirror.com";
 const SEARCH_RESULT_LINK: &str = "h5.appRowTitle a.fontBlack";
 const LIST_WIDGET: &str = "div.listWidget";
 const ALL_VERSIONS_ANCHOR: &str = r#"a[name="all_versions"]"#;
-const VERSION_ROW_LINK: &str = "div.appRow h5.appRowTitle a.fontBlack";
+const VERSION_ROW: &str = "div.appRow";
+const ROW_TITLE_LINK: &str = "h5.appRowTitle a.fontBlack";
+const ROW_DATE: &str = "span.dateyear_utc";
 const VARIANTS_TABLE_ROW: &str = "div.variants-table div.table-row";
 const CELL: &str = "div.table-cell";
 const VARIANT_LINK: &str = "a.accent_color";
@@ -102,6 +104,8 @@ pub fn app_page_from_release(release_url: &str) -> Option<String> {
 pub struct VersionRow {
     pub title: String,
     pub version_page_url: String,
+    /// Raw `data-utcdate` string, e.g. `09/7/2026 02:34 UTC`.
+    pub uploaded: Option<String>,
 }
 
 /// Parse the "All versions" widget on an app page.
@@ -109,7 +113,9 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
     let doc = Html::parse_document(html);
     let widget_sel = sel(LIST_WIDGET);
     let anchor_sel = sel(ALL_VERSIONS_ANCHOR);
-    let row_sel = sel(VERSION_ROW_LINK);
+    let row_sel = sel(VERSION_ROW);
+    let title_sel = sel(ROW_TITLE_LINK);
+    let date_sel = sel(ROW_DATE);
 
     // scraper has no :has(), so find the listWidget that contains the anchor.
     let widget = doc
@@ -119,11 +125,18 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 
     let rows: Vec<VersionRow> = widget
         .select(&row_sel)
-        .filter_map(|a| {
+        .filter_map(|row| {
+            let a = row.select(&title_sel).next()?;
             let href = a.value().attr("href")?;
+            let uploaded = row
+                .select(&date_sel)
+                .next()
+                .and_then(|d| d.value().attr("data-utcdate"))
+                .map(|s| s.trim().to_string());
             Some(VersionRow {
                 title: text_of(a),
                 version_page_url: abs(href),
+                uploaded,
             })
         })
         .collect();
@@ -148,7 +161,6 @@ pub fn version_token(title: &str) -> String {
 pub struct Variant {
     pub version: String,
     pub arch: String,
-    pub dpi: String,
     /// "APK" or "BUNDLE".
     pub kind: String,
     pub download_page_url: String,
@@ -179,27 +191,39 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
                 version: text_of(link),
                 kind,
                 arch: cells.get(1).map(|c| text_of(*c)).unwrap_or_default(),
-                dpi: cells.get(3).map(|c| text_of(*c)).unwrap_or_default(),
                 download_page_url: abs(href),
             })
         })
         .collect()
 }
 
-/// Pick a variant: prefer a universal/nodpi APK, else the first APK, else the
-/// first row.
-// ponytail: naive arch pick. Add `--arch`/`--dpi` to the CLI + trait when it matters.
-pub fn choose_variant(variants: &[Variant]) -> Option<&Variant> {
-    let is_apk = |v: &&Variant| v.kind.eq_ignore_ascii_case("APK") || v.kind.is_empty();
-    let universal = |v: &&Variant| {
-        let a = v.arch.to_ascii_lowercase();
-        a.contains("universal") || a.contains("noarch") || a == "all" || a.is_empty()
-    };
+fn arch_tokens(v: &Variant) -> Vec<String> {
+    v.arch
+        .to_ascii_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn is_universal(v: &Variant) -> bool {
+    let a = v.arch.to_ascii_lowercase();
+    a.is_empty() || a.contains("universal") || a.contains("noarch") || a == "all"
+}
+
+/// Pick a variant for `arch` (e.g. `arm64-v8a`): exact-arch APK, else a universal
+/// APK, else any APK, else an exact-arch bundle, else the first row.
+// ponytail: no `--dpi`; add it here + in the trait if screen-density builds matter.
+pub fn choose_variant<'a>(variants: &'a [Variant], arch: &str) -> Option<&'a Variant> {
+    let want = arch.to_ascii_lowercase();
+    let is_apk = |v: &&Variant| v.kind.eq_ignore_ascii_case("APK");
+    let arch_match = |v: &&Variant| arch_tokens(v).contains(&want);
     variants
         .iter()
-        .find(|v| is_apk(v) && universal(v) && v.dpi.to_ascii_lowercase().contains("nodpi"))
-        .or_else(|| variants.iter().find(|v| is_apk(v) && universal(v)))
+        .find(|v| is_apk(v) && arch_match(v))
+        .or_else(|| variants.iter().find(|v| is_apk(v) && is_universal(v)))
         .or_else(|| variants.iter().find(is_apk))
+        .or_else(|| variants.iter().find(arch_match))
         .or_else(|| variants.first())
 }
 
@@ -231,7 +255,7 @@ mod tests {
     const SEARCH: &str = include_str!("../tests/fixtures/search-firefox.html");
     const SEARCH_NONE: &str = include_str!("../tests/fixtures/search-no-results.html");
     const APP: &str = include_str!("../tests/fixtures/app-firefox.html");
-    const VERSION: &str = include_str!("../tests/fixtures/version-firefox-155.html");
+    const VERSION: &str = include_str!("../tests/fixtures/version-firefox.html");
     const DL_PAGE: &str = include_str!("../tests/fixtures/download-page-firefox.html");
     const STARTING: &str = include_str!("../tests/fixtures/download-starting-firefox.html");
 
@@ -272,8 +296,18 @@ mod tests {
     fn parses_version_list() {
         let rows = parse_versions(APP).unwrap();
         assert!(!rows.is_empty());
-        assert!(rows.iter().any(|r| r.title.contains("155.0.1")));
         assert!(rows[0].version_page_url.contains("-release/"));
+        assert!(rows.iter().any(|r| r.title.to_lowercase().contains("firefox")));
+        // version tokens look like release numbers
+        assert!(rows.iter().any(|r| {
+            let t = version_token(&r.title);
+            t.contains('.') && t.chars().next().is_some_and(|c| c.is_ascii_digit())
+        }));
+        assert!(
+            rows[0].uploaded.as_deref().is_some_and(|d| d.contains("UTC")),
+            "expected an upload date: {:?}",
+            rows[0].uploaded
+        );
     }
 
     #[test]
@@ -282,14 +316,20 @@ mod tests {
     }
 
     #[test]
-    fn parses_variants_and_picks_one() {
+    fn parses_variants_and_picks_by_arch() {
         let variants = parse_variants(VERSION);
         assert!(!variants.is_empty(), "expected variant rows");
         for v in &variants {
             assert!(v.download_page_url.contains("-download/"));
         }
-        let chosen = choose_variant(&variants).unwrap();
-        assert!(chosen.kind.is_empty() || chosen.kind.eq_ignore_ascii_case("APK"));
+        // Firefox 155 lists an arm64-v8a APK plus universal bundles/APK.
+        let arm = choose_variant(&variants, "arm64-v8a").unwrap();
+        assert!(arm.kind.eq_ignore_ascii_case("APK"));
+        assert!(arm.arch.to_lowercase().contains("arm64-v8a"));
+
+        // An arch with no exact match falls back to a universal APK, never a bundle.
+        let x86 = choose_variant(&variants, "x86").unwrap();
+        assert!(x86.kind.eq_ignore_ascii_case("APK"));
     }
 
     #[test]
