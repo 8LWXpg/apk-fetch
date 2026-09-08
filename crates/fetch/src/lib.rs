@@ -50,6 +50,39 @@ fn looks_blocked(body: &str) -> bool {
 
 /// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
 /// `PK\x05\x06`. An empty or missing file fails the check.
+/// APK-family extension implied by a content-type or final URL, if any.
+fn package_ext_from(content_type: &str, url: &str) -> Option<&'static str> {
+    let ct = content_type.to_ascii_lowercase();
+    if ct.contains("xapk") {
+        return Some("xapk");
+    }
+    if ct.contains("vnd.android.package-archive") {
+        return Some("apk");
+    }
+    let hay = url.to_ascii_lowercase();
+    ["xapk", "apkm", "apks", "apk"]
+        .into_iter()
+        .find(|ext| hay.contains(&format!(".{ext}?")) || hay.ends_with(&format!(".{ext}")))
+}
+
+/// If the server says the payload is a different package type than `dest`'s
+/// extension, rename it. Returns the path actually on disk.
+async fn rename_to_real_ext(
+    dest: &Path,
+    content_type: &str,
+    final_url: &str,
+) -> Result<std::path::PathBuf, ProviderError> {
+    let Some(real) = package_ext_from(content_type, final_url) else {
+        return Ok(dest.to_path_buf());
+    };
+    if dest.extension().and_then(|e| e.to_str()) == Some(real) {
+        return Ok(dest.to_path_buf());
+    }
+    let target = dest.with_extension(real);
+    tokio::fs::rename(dest, &target).await.map_err(network_err)?;
+    Ok(target)
+}
+
 async fn starts_with_zip_magic(path: &std::path::Path) -> bool {
     use tokio::io::AsyncReadExt;
     let Ok(mut f) = tokio::fs::File::open(path).await else {
@@ -188,13 +221,17 @@ impl HttpFetcher {
 
     /// Stream a URL to `dest`, calling `progress(downloaded, total)` while it runs.
     /// `total` is `None` — curl owns the transfer, we just poll the partial file.
+    ///
+    /// Returns the path actually written: if the server's content-type / final URL
+    /// says the payload is a different package type than `dest`'s extension (e.g.
+    /// an `.xapk` when we guessed `.apk`), the file is renamed to match.
     pub async fn download_to_file<F>(
         &self,
         url: &str,
         headers: &[(String, String)],
         dest: &Path,
         mut progress: F,
-    ) -> Result<(), ProviderError>
+    ) -> Result<std::path::PathBuf, ProviderError>
     where
         F: FnMut(u64, Option<u64>) + Send,
     {
@@ -204,7 +241,9 @@ impl HttpFetcher {
             .args(["--fail", "--retry", &MAX_RETRIES.to_string()])
             .arg("-o")
             .arg(dest)
-            .stdout(Stdio::null())
+            .arg("-w")
+            .arg("%{content_type}\t%{url_effective}")
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
@@ -236,7 +275,13 @@ impl HttpFetcher {
                             "downloaded file is not an APK (server returned a non-package response)",
                         ));
                     }
-                    return Ok(());
+                    let mut w = String::new();
+                    if let Some(mut s) = child.stdout.take() {
+                        use tokio::io::AsyncReadExt;
+                        let _ = s.read_to_string(&mut w).await;
+                    }
+                    let (ct, final_url) = w.split_once('\t').unwrap_or((w.as_str(), ""));
+                    return rename_to_real_ext(dest, ct, final_url).await;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(200)) => {
                     if let Ok(m) = tokio::fs::metadata(dest).await {
@@ -276,6 +321,21 @@ mod tests {
         ));
         assert!(looks_blocked("window._cf_chl_opt={};"));
         assert!(!looks_blocked("<html><body>normal apkmirror page</body></html>"));
+    }
+
+    #[test]
+    fn ext_from_content_type_and_url() {
+        assert_eq!(
+            package_ext_from("application/vnd.android.package-archive", ""),
+            Some("apk")
+        );
+        assert_eq!(package_ext_from("application/xapk-package-archive", ""), Some("xapk"));
+        // content-type unhelpful -> fall back to the URL
+        assert_eq!(
+            package_ext_from("application/octet-stream", "https://x/y_APKPure.xapk?k=1"),
+            Some("xapk")
+        );
+        assert_eq!(package_ext_from("text/html", "https://x/y"), None);
     }
 
     #[test]

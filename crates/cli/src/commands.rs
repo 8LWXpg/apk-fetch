@@ -158,7 +158,7 @@ pub async fn get(
         ProgressStyle::with_template("{bar:40} {bytes}/{total_bytes} {bytes_per_sec}")
             .unwrap_or_else(|_| ProgressStyle::default_bar()),
     );
-    fetcher
+    let saved = fetcher
         .download_to_file(&target.url, &target.headers, &dest, |done, total| {
             if let Some(t) = total {
                 pb.set_length(t);
@@ -173,14 +173,14 @@ pub async fn get(
         println!(
             "{}",
             serde_json::json!({
-                "path": dest.display().to_string(),
+                "path": saved.display().to_string(),
                 "provider": target.provider,
                 "version": target.version,
                 "arch": target.arch,
             })
         );
     } else {
-        success!("saved {}", dest.display());
+        success!("saved {}", saved.display());
     }
     Ok(())
 }
