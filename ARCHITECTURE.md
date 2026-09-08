@@ -75,9 +75,10 @@ only touches the app page to read the latest version string (and to 404 →
 ### Fixtures
 
 Pure parsers live in each provider's `src/parse.rs`, unit-tested against saved
-HTML in `tests/fixtures/` — no network in tests. Regenerate them with
-`scripts/refresh-fixtures.sh` after a site changes; the tests assert on structure,
-not specific version numbers, so a refresh rarely breaks them. CSS selectors are
+HTML in `tests/fixtures/` — no network in tests. Each provider ships a
+`tests/refresh-fixtures.sh` that re-fetches its own fixtures; run it after a site
+changes, check the diff, adjust selectors. The tests assert on structure, not
+specific version numbers, so a refresh rarely breaks them. CSS selectors are
 `const &str` in `parse.rs`; they move to config only if a real breakage proves it.
 
 ## Why "blocked" is a typed error
