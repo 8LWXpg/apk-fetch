@@ -1,0 +1,282 @@
+//! HTTP via the system `curl`. We shell out rather than use a Rust HTTP client
+//! because mirror sites (APKMirror) sit behind Cloudflare rules that challenge
+//! `reqwest`'s TLS fingerprint on content paths — `curl` (schannel / system
+//! OpenSSL) passes with a browser UA where `rustls` and `native-tls` both get a
+//! managed challenge. `curl` ships with Windows 10+, macOS, and virtually every
+//! Linux.
+//!
+//! Responsibilities: per-provider throttle, transient-error retry, and mapping
+//! Cloudflare/anti-bot responses to `ProviderError::Blocked`.
+
+use std::path::Path;
+use std::process::Stdio;
+use std::time::{Duration, Instant};
+
+use apk_fetch_core::ProviderError;
+use async_trait::async_trait;
+use tokio::process::Command;
+use tokio::sync::Mutex;
+
+/// Hardcoded knobs (spec: constants live here, not in config).
+/// Whole-request cap for page fetches. Downloads only get `CONNECT_TIMEOUT_SECS`
+/// (a big APK legitimately takes minutes).
+pub const REQUEST_TIMEOUT_SECS: u64 = 30;
+pub const CONNECT_TIMEOUT_SECS: u64 = 20;
+/// Minimum gap between requests from one provider's fetcher.
+pub const THROTTLE_DELAY: Duration = Duration::from_millis(1200);
+pub const MAX_RETRIES: u32 = 3;
+pub const RETRY_BASE_BACKOFF: Duration = Duration::from_millis(500);
+pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+    (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+/// Cloudflare / anti-bot challenge fingerprints in a response body.
+const BLOCK_SIGNATURES: &[&str] = &[
+    "Just a moment...",
+    "cf-browser-verification",
+    "cf_chl_opt",
+    "Attention Required! | Cloudflare",
+    "Checking if the site connection is secure",
+    "_cf_chl_",
+    "Enable JavaScript and cookies to continue",
+];
+
+/// Browser-ish request headers curl doesn't send by default.
+const BROWSER_HEADERS: &[&str] = &[
+    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language: en-US,en;q=0.9",
+    "Upgrade-Insecure-Requests: 1",
+    "Sec-Fetch-Dest: document",
+    "Sec-Fetch-Mode: navigate",
+    "Sec-Fetch-Site: none",
+];
+
+fn network_err(e: impl std::fmt::Display) -> ProviderError {
+    ProviderError::Network(std::io::Error::other(e.to_string()))
+}
+
+fn looks_blocked(body: &str) -> bool {
+    BLOCK_SIGNATURES.iter().any(|sig| body.contains(sig))
+}
+
+/// curl exit codes worth retrying (connect / resolve / timeout / recv).
+fn curl_exit_is_transient(code: Option<i32>) -> bool {
+    matches!(code, Some(6 | 7 | 28 | 35 | 52 | 55 | 56))
+}
+
+fn map_http_status(code: u16) -> Option<ProviderError> {
+    match code {
+        404 | 410 => Some(ProviderError::NotFound),
+        403 | 429 => Some(ProviderError::Blocked { retry_after: None }),
+        s if s >= 500 => Some(network_err(format!("upstream returned {s}"))),
+        _ => None,
+    }
+}
+
+#[async_trait]
+pub trait Fetcher: Send + Sync {
+    /// GET a URL and return the body as text (throttle + retry + block detection).
+    async fn get_text(&self, url: &str) -> Result<String, ProviderError>;
+    /// GET a URL and return the raw body bytes.
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, ProviderError>;
+}
+
+/// A curl-backed fetcher with a per-instance throttle. Construct one per provider
+/// so each site gets its own request cadence.
+pub struct HttpFetcher {
+    min_gap: Duration,
+    last_request: Mutex<Option<Instant>>,
+}
+
+impl HttpFetcher {
+    pub fn new() -> Self {
+        Self::with_delay(THROTTLE_DELAY)
+    }
+
+    pub fn with_delay(min_gap: Duration) -> Self {
+        Self {
+            min_gap,
+            last_request: Mutex::new(None),
+        }
+    }
+
+    /// Sleep so at least `min_gap` has elapsed since the previous request.
+    async fn throttle(&self) {
+        let mut last = self.last_request.lock().await;
+        if let Some(prev) = *last {
+            let elapsed = prev.elapsed();
+            if elapsed < self.min_gap {
+                tokio::time::sleep(self.min_gap - elapsed).await;
+            }
+        }
+        *last = Some(Instant::now());
+    }
+
+    fn base_cmd(url: &str, headers: &[(String, String)]) -> Command {
+        let mut cmd = Command::new("curl");
+        cmd.args([
+            "-sS",
+            "-L",
+            "--compressed",
+            "--connect-timeout",
+            &CONNECT_TIMEOUT_SECS.to_string(),
+            "-A",
+            USER_AGENT,
+        ]);
+        for h in BROWSER_HEADERS {
+            cmd.arg("-H").arg(h);
+        }
+        for (k, v) in headers {
+            cmd.arg("-H").arg(format!("{k}: {v}"));
+        }
+        cmd.arg(url);
+        cmd
+    }
+
+    /// One GET with retry-on-transient. `Blocked` / `NotFound` never retry.
+    async fn get(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+    ) -> Result<String, ProviderError> {
+        let mut attempt = 0;
+        loop {
+            self.throttle().await;
+
+            let output = Self::base_cmd(url, headers)
+                .args(["--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
+                .arg("-w")
+                .arg("\n%{http_code}")
+                .output()
+                .await
+                .map_err(|e| network_err(format!("spawning curl: {e}")))?;
+
+            if !output.status.success() {
+                let code = output.status.code();
+                if curl_exit_is_transient(code) && attempt < MAX_RETRIES {
+                    attempt += 1;
+                    tokio::time::sleep(RETRY_BASE_BACKOFF * attempt).await;
+                    continue;
+                }
+                return Err(network_err(format!(
+                    "curl exited {code:?}: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let (body, status_line) = stdout.rsplit_once('\n').unwrap_or((&stdout, "0"));
+            let status: u16 = status_line.trim().parse().unwrap_or(0);
+
+            if let Some(err) = map_http_status(status) {
+                if matches!(err, ProviderError::Network(_)) && attempt < MAX_RETRIES {
+                    attempt += 1;
+                    tokio::time::sleep(RETRY_BASE_BACKOFF * attempt).await;
+                    continue;
+                }
+                return Err(err);
+            }
+            if looks_blocked(body) {
+                return Err(ProviderError::Blocked { retry_after: None });
+            }
+            return Ok(body.to_string());
+        }
+    }
+
+    /// Stream a URL to `dest`, calling `progress(downloaded, total)` while it runs.
+    /// `total` is `None` — curl owns the transfer, we just poll the partial file.
+    pub async fn download_to_file<F>(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        dest: &Path,
+        mut progress: F,
+    ) -> Result<(), ProviderError>
+    where
+        F: FnMut(u64, Option<u64>) + Send,
+    {
+        self.throttle().await;
+
+        let mut child = Self::base_cmd(url, headers)
+            .args(["--fail", "--retry", &MAX_RETRIES.to_string()])
+            .arg("-o")
+            .arg(dest)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| network_err(format!("spawning curl: {e}")))?;
+
+        loop {
+            tokio::select! {
+                status = child.wait() => {
+                    let status = status.map_err(network_err)?;
+                    if let Ok(m) = tokio::fs::metadata(dest).await {
+                        progress(m.len(), None);
+                    }
+                    if !status.success() {
+                        let mut err = String::new();
+                        if let Some(mut s) = child.stderr.take() {
+                            use tokio::io::AsyncReadExt;
+                            let _ = s.read_to_string(&mut err).await;
+                        }
+                        let _ = tokio::fs::remove_file(dest).await;
+                        return Err(network_err(format!(
+                            "curl download failed ({status}): {}",
+                            err.trim()
+                        )));
+                    }
+                    return Ok(());
+                }
+                _ = tokio::time::sleep(Duration::from_millis(200)) => {
+                    if let Ok(m) = tokio::fs::metadata(dest).await {
+                        progress(m.len(), None);
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Default for HttpFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Fetcher for HttpFetcher {
+    async fn get_text(&self, url: &str) -> Result<String, ProviderError> {
+        self.get(url, &[]).await
+    }
+
+    async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
+        self.get(url, &[]).await.map(String::into_bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_cloudflare_challenge() {
+        assert!(looks_blocked(
+            "<html><head><title>Just a moment...</title></head></html>"
+        ));
+        assert!(looks_blocked("window._cf_chl_opt={};"));
+        assert!(!looks_blocked("<html><body>normal apkmirror page</body></html>"));
+    }
+
+    #[test]
+    fn status_mapping() {
+        assert!(matches!(
+            map_http_status(403),
+            Some(ProviderError::Blocked { .. })
+        ));
+        assert!(matches!(
+            map_http_status(429),
+            Some(ProviderError::Blocked { .. })
+        ));
+        assert!(matches!(map_http_status(404), Some(ProviderError::NotFound)));
+        assert!(map_http_status(200).is_none());
+    }
+}

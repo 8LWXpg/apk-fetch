@@ -1,0 +1,11 @@
+[package]
+name = "apk-fetch-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+colored.workspace = true

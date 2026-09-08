@@ -1,0 +1,10 @@
+[package]
+name = "apk-fetch-fetch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+apk-fetch-core.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
