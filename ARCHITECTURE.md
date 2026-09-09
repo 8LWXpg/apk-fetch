@@ -6,9 +6,8 @@ requests fails over to the next instead of taking the whole tool down.
 
 ## Crate layout
 
-Leaf crate packages have bare names (`provider`, `fetch`, `apkmirror`, …). Outside
-code reaches them through the umbrella namespace; the leaves refer to each other
-by bare name directly.
+Leaf crate packages have bare names; outside code reaches them through the
+`apk_fetch::` umbrella.
 
 | Namespace (package · dir) | Responsibility |
 |---|---|

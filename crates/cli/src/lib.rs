@@ -1,6 +1,4 @@
-//! Umbrella facade: the workspace's crates under one `apk_fetch::` namespace.
-//! The leaf crates refer to each other by bare name (`provider`, `fetch`);
-//! outside code goes through here.
+//! The workspace's crates under one `apk_fetch::` namespace.
 
 pub use fetch;
 pub use provider as core;
