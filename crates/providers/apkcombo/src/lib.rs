@@ -58,6 +58,7 @@ impl Provider for ApkCombo {
             .map(|h| AppResult {
                 package: h.package,
                 title: h.title,
+                version: None,
                 developer: None,
                 provider: NAME.to_string(),
             })

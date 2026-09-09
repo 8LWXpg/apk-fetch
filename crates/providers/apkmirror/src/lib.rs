@@ -68,7 +68,7 @@ impl Provider for ApkMirror {
     async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError> {
         let html = self.fetcher.get_text(&Self::search_url(query)).await?;
         let hits = parse::parse_search(&html)?;
-        Ok(hits
+        let mut results: Vec<AppResult> = hits
             .into_iter()
             .filter_map(|h| {
                 let package = parse::app_page_from_release(&h.release_url)?
@@ -76,14 +76,22 @@ impl Provider for ApkMirror {
                     .trim_matches('/')
                     .trim_start_matches("apk/")
                     .to_string();
+                let (title, version) = parse::split_title_version(&h.title);
                 Some(AppResult {
                     package, // APKMirror identifier: "{org}/{repo}" (no Android pkg id on the page)
-                    title: h.title,
+                    title,
+                    version,
                     developer: None,
                     provider: NAME.to_string(),
                 })
             })
-            .collect())
+            .collect();
+        // APKMirror ranks on a blind substring match and lists one row per
+        // release, so re-rank by query relevance (stable) and drop repeat apps.
+        results.sort_by_key(|r| parse::relevance(&r.title, query));
+        let mut seen = std::collections::HashSet::new();
+        results.retain(|r| seen.insert(r.package.clone()));
+        Ok(results)
     }
 
     async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {

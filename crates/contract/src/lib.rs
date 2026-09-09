@@ -13,6 +13,9 @@ use std::time::Duration;
 pub struct AppResult {
     pub package: String,
     pub title: String,
+    /// Latest/only version the search row advertised, if any (APKMirror shows it;
+    /// the others don't).
+    pub version: Option<String>,
     pub developer: Option<String>,
     /// Which provider produced this result.
     pub provider: String,

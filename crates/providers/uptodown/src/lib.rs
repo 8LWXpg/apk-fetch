@@ -86,6 +86,7 @@ impl Provider for Uptodown {
                     .unwrap_or(&h.base)
                     .to_string(),
                 title: h.name,
+                version: None,
                 developer: None,
                 provider: NAME.to_string(),
             })

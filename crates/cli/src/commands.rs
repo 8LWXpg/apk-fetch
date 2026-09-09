@@ -5,10 +5,12 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use apk_fetch::contract::{
-    ProviderError, ProviderRegistry, ResolveError, error, info, success, warn,
+    AppResult, ProviderError, ProviderRegistry, ResolveError, error, info, success, warn,
 };
 use apk_fetch::fetch::HttpFetcher;
+use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
+use unicode_width::UnicodeWidthStr;
 
 use crate::{AppError, DEFAULT_PRIORITY, EXIT_BLOCKED, EXIT_NETWORK, EXIT_NOT_FOUND};
 
@@ -51,6 +53,33 @@ fn order<'a>(provider: Option<&'a str>, priority: &'a [String]) -> Vec<&'a str> 
     }
 }
 
+/// `{title}  {version}  {package}`, columns padded to line up.
+fn render_results(provider: &str, results: &[AppResult]) {
+    // Pad `s` to `w` terminal columns, then colour — `{:<w$}` counts chars, which
+    // is wrong for CJK / wide glyphs, so measure with unicode-width instead.
+    let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
+
+    println!("{}", provider.cyan().bold());
+    let tw = results.iter().map(|r| r.title.width()).max().unwrap_or(0);
+    let vw = results
+        .iter()
+        .filter_map(|r| r.version.as_deref())
+        .map(str::width)
+        .max()
+        .unwrap_or(0);
+    for r in results {
+        let mut line = format!("{} {}", "•".cyan().bold(), pad(&r.title, tw).bold());
+        if vw > 0 {
+            line.push_str(&format!(
+                "  {}",
+                pad(r.version.as_deref().unwrap_or(""), vw).green()
+            ));
+        }
+        line.push_str(&format!("  {}", r.package.dimmed()));
+        println!("{line}");
+    }
+}
+
 pub async fn search(
     registry: &ProviderRegistry,
     query: &str,
@@ -60,7 +89,9 @@ pub async fn search(
 ) -> Result<(), AppError> {
     let mut last: Option<AppError> = None;
     for name in order(provider, priority) {
-        let Some(p) = registry.get(name) else { continue };
+        let Some(p) = registry.get(name) else {
+            continue;
+        };
         info!("searching {}...", name);
         match p.search(query).await {
             Ok(results) if results.is_empty() => continue,
@@ -68,11 +99,7 @@ pub async fn search(
                 if json {
                     println!("{}", serde_json::to_string_pretty(&results)?);
                 } else {
-                    for r in &results {
-                        apk_fetch::contract::print_message!(
-                            "•", cyan, "{}  {}  ({})", r.package, r.title, r.provider
-                        );
-                    }
+                    render_results(name, &results);
                 }
                 return Ok(());
             }
@@ -147,8 +174,10 @@ pub async fn get(
             .map_err(|e| provider_err(name, e))?
     };
 
-    std::fs::create_dir_all(output)
-        .map_err(|e| AppError { code: EXIT_NETWORK, source: anyhow!("{e}") })?;
+    std::fs::create_dir_all(output).map_err(|e| AppError {
+        code: EXIT_NETWORK,
+        source: anyhow!("{e}"),
+    })?;
     let dest = output.join(&target.filename);
 
     info!("downloading from {} ({})", target.provider, target.url);
@@ -166,7 +195,10 @@ pub async fn get(
             pb.set_position(done);
         })
         .await
-        .map_err(|e| AppError { code: provider_error_code(&e), source: anyhow!("download failed: {e}") })?;
+        .map_err(|e| AppError {
+            code: provider_error_code(&e),
+            source: anyhow!("download failed: {e}"),
+        })?;
     pb.finish_and_clear();
 
     if json {
@@ -203,8 +235,15 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
     }
     for name in &names {
         match default.iter().position(|d| d == name) {
-            Some(i) => apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i + 1),
-            None => apk_fetch::contract::print_message!("•", cyan, "{}  (not in default priority)", name),
+            Some(i) => {
+                apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i + 1)
+            }
+            None => apk_fetch::contract::print_message!(
+                "•",
+                cyan,
+                "{}  (not in default priority)",
+                name
+            ),
         }
     }
     Ok(())

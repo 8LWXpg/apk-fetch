@@ -63,6 +63,13 @@ discover the identifier, then `get` it.
 
 ### APKMirror resolution flow
 
+APKMirror's own search ranks on a blind substring match (`s=line` floats
+`Lineage2M` and `Korean Air` above `LINE`) and returns one row per *release*, so
+`search` re-ranks the hits by query relevance (`parse::relevance`: whole-word hit
+beats prefix beats substring; stable, ties keep site order) and drops repeat
+apps. The CLI renders them as aligned `{title} {version} {package}` columns under
+a single provider-name header.
+
 APKMirror has no package-id lookup, so every entrypoint starts from the site's own
 search (query = the package id), takes the top hit, then walks:
 

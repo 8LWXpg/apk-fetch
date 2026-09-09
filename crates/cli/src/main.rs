@@ -11,7 +11,28 @@ use apk_fetch::providers::{
     apkcombo::ApkCombo, apkmirror::ApkMirror, apkpure::ApkPure, uptodown::Uptodown,
 };
 use clap::builder::styling;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+/// The known providers, as a CLI-parseable enum. Variant names lower-case to the
+/// registry names via clap's default kebab rename (all single words).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Provider {
+    Apkmirror,
+    Apkpure,
+    Apkcombo,
+    Uptodown,
+}
+
+impl Provider {
+    fn as_str(self) -> &'static str {
+        match self {
+            Provider::Apkmirror => "apkmirror",
+            Provider::Apkpure => "apkpure",
+            Provider::Apkcombo => "apkcombo",
+            Provider::Uptodown => "uptodown",
+        }
+    }
+}
 
 /// Default provider priority. Also the clap default for `--priority` below (kept as
 /// a literal there because clap's derive wants one).
@@ -62,19 +83,19 @@ enum Command {
         query: String,
         /// Use only this provider.
         #[arg(long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         #[arg(
             long,
             value_delimiter = ',',
             default_value = "apkmirror,apkpure,apkcombo,uptodown"
         )]
-        priority: Vec<String>,
+        priority: Vec<Provider>,
     },
     /// List published versions of a package.
     Versions {
         package_id: String,
         #[arg(long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
     },
     /// Resolve and download an APK.
     Get {
@@ -83,13 +104,13 @@ enum Command {
         version: Option<String>,
         /// Use only this provider (overrides --priority / --fallback).
         #[arg(long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         #[arg(
             long,
             value_delimiter = ',',
             default_value = "apkmirror,apkpure,apkcombo,uptodown"
         )]
-        priority: Vec<String>,
+        priority: Vec<Provider>,
         /// Preferred ABI; providers fall back to a universal build if unavailable.
         #[arg(long, default_value = "arm64-v8a")]
         arch: String,
@@ -112,7 +133,7 @@ enum ProvidersCmd {
     /// List configured providers and their priority.
     List,
     /// Probe provider reachability.
-    Check { name: Option<String> },
+    Check { name: Option<Provider> },
 }
 
 fn build_registry() -> ProviderRegistry {
@@ -131,11 +152,29 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
             query,
             provider,
             priority,
-        } => commands::search(&registry, &query, provider.as_deref(), &priority, cli.json).await,
+        } => {
+            let priority = names(&priority);
+            commands::search(
+                &registry,
+                &query,
+                provider.map(Provider::as_str),
+                &priority,
+                cli.json,
+            )
+            .await
+        }
         Command::Versions {
             package_id,
             provider,
-        } => commands::versions(&registry, &package_id, provider.as_deref(), cli.json).await,
+        } => {
+            commands::versions(
+                &registry,
+                &package_id,
+                provider.map(Provider::as_str),
+                cli.json,
+            )
+            .await
+        }
         Command::Get {
             package_id,
             version,
@@ -145,11 +184,12 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
             output,
             fallback,
         } => {
+            let priority = names(&priority);
             commands::get(
                 &registry,
                 &package_id,
                 version.as_deref(),
-                provider.as_deref(),
+                provider.map(Provider::as_str),
                 &priority,
                 &arch,
                 &output,
@@ -161,10 +201,15 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
         Command::Providers { cmd } => match cmd {
             ProvidersCmd::List => commands::providers_list(&registry, cli.json),
             ProvidersCmd::Check { name } => {
-                commands::providers_check(&registry, name.as_deref(), cli.json).await
+                commands::providers_check(&registry, name.map(Provider::as_str), cli.json).await
             }
         },
     }
+}
+
+/// Provider enums -> registry name strings, in order.
+fn names(providers: &[Provider]) -> Vec<String> {
+    providers.iter().map(|p| p.as_str().to_string()).collect()
 }
 
 fn get_styles() -> clap::builder::Styles {

@@ -86,6 +86,27 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
     Ok(hits)
 }
 
+/// How well a result title matches the query: 0 = exact / whole-word hit, 3 =
+/// substring-only or worse. APKMirror's own ranking is a blind substring match
+/// (`s=line` floats `Lineage2M` and `Korean Air` above `LINE`), so the provider
+/// stable-sorts search results on this.
+pub fn relevance(title: &str, query: &str) -> u8 {
+    let (t, q) = (title.to_lowercase(), query.trim().to_lowercase());
+    if t == q {
+        return 0;
+    }
+    let words = || t.split(|c: char| !c.is_alphanumeric()).filter(|s| !s.is_empty());
+    if words().any(|w| w == q) {
+        0
+    } else if t.starts_with(&q) || words().any(|w| w.starts_with(&q)) {
+        1
+    } else if t.contains(&q) {
+        2
+    } else {
+        3
+    }
+}
+
 /// `/apk/{org}/{repo}/{repo}-x-y-release/` -> `/apk/{org}/{repo}/` (absolute).
 pub fn app_page_from_release(release_url: &str) -> Option<String> {
     let path = release_url.strip_prefix(BASE_URL)?;
@@ -144,6 +165,18 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
         return Err(ProviderError::NotFound);
     }
     Ok(rows)
+}
+
+/// Split a trailing version number off a search-result title:
+/// `"LINE: Calls & Messages 26.14.0"` -> `("LINE: Calls & Messages", Some("26.14.0"))`.
+/// Leaves the title whole when the tail isn't a dotted number.
+pub fn split_title_version(title: &str) -> (String, Option<String>) {
+    let tok = version_token(title);
+    let looks_ver = tok.contains('.') && tok.starts_with(|c: char| c.is_ascii_digit());
+    match title.strip_suffix(&tok).filter(|_| looks_ver && tok != title) {
+        Some(head) => (head.trim().to_string(), Some(tok)),
+        None => (title.to_string(), None),
+    }
 }
 
 /// Best-effort: last whitespace token that looks like a version number.
@@ -388,5 +421,24 @@ mod tests {
     #[test]
     fn version_token_extracts_number() {
         assert_eq!(version_token("Firefox Fast & Private Browser 155.0.1"), "155.0.1");
+    }
+
+    #[test]
+    fn splits_trailing_version() {
+        assert_eq!(
+            split_title_version("LINE: Calls & Messages 26.14.0"),
+            ("LINE: Calls & Messages".into(), Some("26.14.0".into()))
+        );
+        // no dotted tail -> title kept whole
+        assert_eq!(split_title_version("Some App"), ("Some App".into(), None));
+        assert_eq!(split_title_version("2nd Line"), ("2nd Line".into(), None));
+    }
+
+    #[test]
+    fn relevance_ranks_whole_word_over_substring() {
+        assert_eq!(relevance("LINE: Calls & Messages", "line"), 0);
+        assert_eq!(relevance("LINE", "line"), 0);
+        assert!(relevance("Lineage2M", "line") > relevance("LINE Camera", "line"));
+        assert_eq!(relevance("Korean Air My", "line"), 3);
     }
 }

@@ -45,6 +45,7 @@ impl Provider for ApkPure {
             .map(|h| AppResult {
                 package: h.package,
                 title: h.title,
+                version: None,
                 developer: h.developer,
                 provider: NAME.to_string(),
             })
