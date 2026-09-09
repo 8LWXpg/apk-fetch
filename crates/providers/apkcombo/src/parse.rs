@@ -16,7 +16,7 @@ pub const BASE_URL: &str = "https://apkcombo.com";
 pub const FALLBACK_XID: &str = "01a1200x20240308";
 
 fn sel(s: &str) -> Selector {
-    Selector::parse(s).expect("static selector is valid")
+    Selector::parse(s).unwrap_or_else(|e| panic!("invalid CSS selector {s:?}: {e}"))
 }
 
 fn text_of(el: scraper::ElementRef<'_>) -> String {

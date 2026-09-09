@@ -11,6 +11,7 @@ use apk_fetch_apkmirror::ApkMirror;
 use apk_fetch_apkpure::ApkPure;
 use apk_fetch_core::{ProviderRegistry, error};
 use apk_fetch_uptodown::Uptodown;
+use clap::builder::styling;
 use clap::{Parser, Subcommand};
 
 /// Default provider priority. Also the clap default for `--priority` below (kept as
@@ -39,7 +40,13 @@ impl<E: Into<anyhow::Error>> From<E> for AppError {
 }
 
 #[derive(Parser)]
-#[command(name = "apk-fetch", version, about = "Download APKs from third-party mirrors")]
+#[command(
+    name = "apk-fetch",
+    version,
+    about = "Download APKs from third-party mirrors",
+    styles = get_styles(),
+    arg_required_else_help = true
+)]
 struct Cli {
     /// Machine-readable JSON output.
     #[arg(long, global = true)]
@@ -57,7 +64,11 @@ enum Command {
         /// Use only this provider.
         #[arg(long)]
         provider: Option<String>,
-        #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure,apkcombo,uptodown")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "apkmirror,apkpure,apkcombo,uptodown"
+        )]
         priority: Vec<String>,
     },
     /// List published versions of a package.
@@ -74,7 +85,11 @@ enum Command {
         /// Use only this provider (overrides --priority / --fallback).
         #[arg(long)]
         provider: Option<String>,
-        #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure,apkcombo,uptodown")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "apkmirror,apkpure,apkcombo,uptodown"
+        )]
         priority: Vec<String>,
         /// Preferred ABI; providers fall back to a universal build if unavailable.
         #[arg(long, default_value = "arm64-v8a")]
@@ -151,6 +166,17 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
             }
         },
     }
+}
+
+fn get_styles() -> clap::builder::Styles {
+    clap::builder::Styles::default()
+        .usage(styling::AnsiColor::BrightGreen.on_default())
+        .header(styling::AnsiColor::BrightGreen.on_default())
+        .literal(styling::AnsiColor::BrightCyan.on_default())
+        .invalid(styling::AnsiColor::BrightYellow.on_default())
+        .error(styling::AnsiColor::BrightRed.on_default().bold())
+        .valid(styling::AnsiColor::BrightGreen.on_default())
+        .placeholder(styling::AnsiColor::Cyan.on_default())
 }
 
 fn main() -> ExitCode {

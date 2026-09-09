@@ -25,7 +25,7 @@ const FINAL_LINK: &str = "a#download-link";
 const FINAL_LINK_FALLBACK: &str = "div.card-with-tabs a[href]";
 
 fn sel(s: &str) -> Selector {
-    Selector::parse(s).expect("static selector is valid")
+    Selector::parse(s).unwrap_or_else(|e| panic!("invalid CSS selector {s:?}: {e}"))
 }
 
 fn parse_err(msg: impl Into<String>) -> ProviderError {

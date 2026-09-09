@@ -9,7 +9,7 @@ pub const BASE_URL: &str = "https://apkpure.com";
 pub const DL_URL: &str = "https://d.apkpure.com";
 
 fn sel(s: &str) -> Selector {
-    Selector::parse(s).expect("static selector is valid")
+    Selector::parse(s).unwrap_or_else(|e| panic!("invalid CSS selector {s:?}: {e}"))
 }
 
 fn text_of(el: scraper::ElementRef<'_>) -> String {
