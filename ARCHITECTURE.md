@@ -9,10 +9,14 @@ requests fails over to the next instead of taking the whole tool down.
 | Crate | Responsibility |
 |---|---|
 | `apk-fetch-core` | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. |
-| `apk-fetch-fetch` | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection. |
-| `apk-fetch-apkmirror` | APKMirror provider — search-walk to the download. |
-| `apk-fetch-apkpure` | APKPure provider — package-id-addressable, no HTML walk needed for downloads. |
+| `apk-fetch-fetch` | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection, `GET` + multipart `POST`. |
+| `apk-fetch-apkmirror` | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
+| `apk-fetch-apkpure` | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
+| `apk-fetch-apkcombo` | APKCombo — no Cloudflare/captcha; search → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
+| `apk-fetch-uptodown` | Uptodown — `search` + `versions` only; the download endpoint is Cloudflare-Turnstile-gated so `download_url` returns `Blocked`. |
 | `apk-fetch` (cli) | clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
+
+Default priority: `apkmirror,apkpure,apkcombo,uptodown`.
 
 Dependency direction is strictly `cli → providers → fetch → core`. `core` depends
 on nothing in the workspace.
@@ -72,15 +76,42 @@ APKPure is package-id-addressable: `/x/{pkg}` resolves to the app page and
 only touches the app page to read the latest version string (and to 404 →
 `NotFound`); with `--version` pinned it skips even that.
 
+### APKCombo resolution flow
+
+No Cloudflare, no captcha on the download path (the page's reCAPTCHA is unrelated).
+`slug_for` reads the `{slug}` URL segment off the bare app page `{BASE}/{pkg}/`
+(it self-links canonically); then: download page → scrape `var xid` → `POST
+/{slug}/{pkg}/{xid}/dl` (form: package_name, version) returns the variant fragment
+→ `POST /checkin` returns an `fp=…&ip=…` token → `{r2_href}&{token}&package_name=…`
+302s to a signed R2 URL. Variant fragment parsing reads both the recommended
+(`#best-variant-tab`) and full (`#variants-tab`) lists.
+
+### Uptodown resolution flow
+
+Per-app subdomains (`spotify.en.uptodown.com`) keyed by app *name*, no package-id
+index. `resolve` searches name fragments of the id (`com.spotify.music` →
+`"spotify music"`, `"spotify"`, `"music"`) and confirms each candidate's app page
+carries the exact package id (`<th>Package Name</th>` row). `versions` then hits
+the JSON API `{base}/android/apps/{code}/versions/{n}`. The download endpoint
+(`POST /ajax/app/{id}/file/{fid}/download-url`) requires a Cloudflare Turnstile
+token an HTTP client can't produce, so `download_url` returns `Blocked` — the
+resolver fails over, and uptodown stays useful for discovery.
+
 ### Fixtures
 
 Pure parsers live in each provider's `src/parse.rs`, unit-tested against saved
-HTML in `tests/<app>/*.html` (one dir per app) — no network in tests. Each
-provider ships a `tests/refresh-fixtures.sh`: no args re-fetches every app dir,
+fixtures in `tests/<app>/` (one dir per app; the test module `fs::read_dir`s it,
+so adding a dir extends coverage with no code change). Each provider ships a
+`tests/refresh-fixtures.sh`: no args re-fetches every app dir in its `APPS` map,
 `refresh-fixtures.sh <app> <package-id>` adds or refreshes one. Run it after a
 site changes, check the diff, adjust selectors. Tests assert on structure, not
-version numbers, so a refresh rarely breaks them. CSS selectors are `const &str`
-in `parse.rs`; they move to config only if a real breakage proves it.
+version numbers, so a refresh rarely breaks them. Selectors are `const &str`.
+
+The fixture app is `com.spotify.music` (a proprietary Play-gated app — the tool's
+real use case) everywhere except `apkmirror`, which keeps `org.schabi.newpipe`:
+APKMirror's Cloudflare blocks fixture re-fetching once an IP has made many
+requests, and the newpipe fixtures were already captured. Align it to spotify
+when the IP is clear; the tests don't care which app.
 
 ## Why "blocked" is a typed error
 

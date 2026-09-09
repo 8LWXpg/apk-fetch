@@ -6,14 +6,16 @@ mod commands;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use apk_fetch_apkcombo::ApkCombo;
 use apk_fetch_apkmirror::ApkMirror;
 use apk_fetch_apkpure::ApkPure;
 use apk_fetch_core::{ProviderRegistry, error};
+use apk_fetch_uptodown::Uptodown;
 use clap::{Parser, Subcommand};
 
 /// Default provider priority. Also the clap default for `--priority` below (kept as
 /// a literal there because clap's derive wants one).
-pub const DEFAULT_PRIORITY: &str = "apkmirror,apkpure";
+pub const DEFAULT_PRIORITY: &str = "apkmirror,apkpure,apkcombo,uptodown";
 
 // Exit codes (spec: scriptable). clap emits 2 for invalid args on its own.
 pub const EXIT_GENERIC: u8 = 1;
@@ -55,7 +57,7 @@ enum Command {
         /// Use only this provider.
         #[arg(long)]
         provider: Option<String>,
-        #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure")]
+        #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure,apkcombo,uptodown")]
         priority: Vec<String>,
     },
     /// List published versions of a package.
@@ -72,7 +74,7 @@ enum Command {
         /// Use only this provider (overrides --priority / --fallback).
         #[arg(long)]
         provider: Option<String>,
-        #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure")]
+        #[arg(long, value_delimiter = ',', default_value = "apkmirror,apkpure,apkcombo,uptodown")]
         priority: Vec<String>,
         /// Preferred ABI; providers fall back to a universal build if unavailable.
         #[arg(long, default_value = "arm64-v8a")]
@@ -103,6 +105,8 @@ fn build_registry() -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
     registry.register(Box::new(ApkMirror::new()));
     registry.register(Box::new(ApkPure::new()));
+    registry.register(Box::new(ApkCombo::new()));
+    registry.register(Box::new(Uptodown::new()));
     registry
 }
 

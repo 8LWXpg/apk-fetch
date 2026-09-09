@@ -1,0 +1,11 @@
+[package]
+name = "apk-fetch-apkcombo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+apk-fetch-core.workspace = true
+apk-fetch-fetch.workspace = true
+async-trait.workspace = true
+scraper.workspace = true

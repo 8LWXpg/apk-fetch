@@ -262,7 +262,7 @@ mod tests {
         let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(&root)
             .expect("tests/ dir")
             .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_dir() && p.join("search.html").is_file())
+            .filter(|p| p.is_dir() && p.join("search.html").metadata().is_ok_and(|m| m.len() > 0))
             .map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
             .collect();
         dirs.sort();

@@ -169,11 +169,32 @@ impl HttpFetcher {
         cmd
     }
 
-    /// One GET with retry-on-transient. `Blocked` / `NotFound` never retry.
-    async fn get(
+    async fn get(&self, url: &str, headers: &[(String, String)]) -> Result<String, ProviderError> {
+        self.request(url, headers, &[]).await
+    }
+
+    /// POST `url` with a `multipart/form-data` body (curl `-F`). An empty `form`
+    /// still issues a POST (some endpoints want a bodyless POST).
+    pub async fn post_form(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+    ) -> Result<String, ProviderError> {
+        let mut extra: Vec<String> = vec!["-X".into(), "POST".into()];
+        for (k, v) in form {
+            extra.push("-F".into());
+            extra.push(format!("{k}={v}"));
+        }
+        let extra_ref: Vec<&str> = extra.iter().map(String::as_str).collect();
+        self.request(url, &[], &extra_ref).await
+    }
+
+    /// One request with retry-on-transient. `Blocked` / `NotFound` never retry.
+    async fn request(
         &self,
         url: &str,
         headers: &[(String, String)],
+        extra_args: &[&str],
     ) -> Result<String, ProviderError> {
         let mut attempt = 0;
         loop {
@@ -181,6 +202,7 @@ impl HttpFetcher {
 
             let output = Self::base_cmd(url, headers)
                 .args(["--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
+                .args(extra_args)
                 .arg("-w")
                 .arg("\n%{http_code}")
                 .output()

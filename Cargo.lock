@@ -76,16 +76,28 @@ name = "apk-fetch"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "apk-fetch-apkcombo",
  "apk-fetch-apkmirror",
  "apk-fetch-apkpure",
  "apk-fetch-core",
  "apk-fetch-fetch",
+ "apk-fetch-uptodown",
  "clap",
  "colored",
  "indicatif",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "apk-fetch-apkcombo"
+version = "0.1.0"
+dependencies = [
+ "apk-fetch-core",
+ "apk-fetch-fetch",
+ "async-trait",
+ "scraper",
 ]
 
 [[package]]
@@ -126,6 +138,17 @@ dependencies = [
  "apk-fetch-core",
  "async-trait",
  "tokio",
+]
+
+[[package]]
+name = "apk-fetch-uptodown"
+version = "0.1.0"
+dependencies = [
+ "apk-fetch-core",
+ "apk-fetch-fetch",
+ "async-trait",
+ "scraper",
+ "serde_json",
 ]
 
 [[package]]
