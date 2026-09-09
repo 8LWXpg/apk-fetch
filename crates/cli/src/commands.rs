@@ -70,7 +70,7 @@ pub async fn search(
                 } else {
                     for r in &results {
                         apk_fetch::contract::print_message!(
-                            "→", cyan, "{}  {}  ({})", r.package, r.title, r.provider
+                            "•", cyan, "{}  {}  ({})", r.package, r.title, r.provider
                         );
                     }
                 }
@@ -103,7 +103,7 @@ pub async fn versions(
         println!("{}", serde_json::to_string_pretty(&list)?);
     } else {
         for v in &list {
-            apk_fetch::contract::print_message!("→", cyan, "{}  ({})", v.version, v.provider);
+            apk_fetch::contract::print_message!("•", cyan, "{}  ({})", v.version, v.provider);
         }
     }
     Ok(())
@@ -203,8 +203,8 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
     }
     for name in &names {
         match default.iter().position(|d| d == name) {
-            Some(i) => apk_fetch::contract::print_message!("→", cyan, "{}  (priority {})", name, i + 1),
-            None => apk_fetch::contract::print_message!("→", cyan, "{}  (not in default priority)", name),
+            Some(i) => apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i + 1),
+            None => apk_fetch::contract::print_message!("•", cyan, "{}  (not in default priority)", name),
         }
     }
     Ok(())
