@@ -23,18 +23,24 @@ apk-fetch-core = { path = "crates/core" }
 apk-fetch-fetch = { path = "crates/fetch" }
 apk-fetch-uptodown = { path = "crates/providers/uptodown" }
 
-# Exact pins: this is a scraper — a direct-dep API change breaks parsing silently.
-# Bump deliberately; the committed Cargo.lock keeps transitive deps reproducible too.
-anyhow = "=1.0.104"
-async-trait = "=0.1.92"
-clap = { version = "=4.6.6", features = ["derive"] }
-colored = "=2.2.0"
-indicatif = "=0.17.11"
-scraper = "=0.20.0"
-serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
-thiserror = "=2.0.20"
-tokio = { version = "=1.53.1", features = ["full"] }
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+# no color (we colorize our own output via `colored`) / no typo-suggestions —
+# saves ~8 anstream/anstyle/strsim crates
+clap = { version = "4.6.6", default-features = false, features = [
+    "std", "derive", "help", "usage", "error-context",
+] }
+colored = "2.2.0"
+indicatif = "0.17.11"
+# no default features: drops scraper's `main` (its own CLI binary + clap/env_logger)
+scraper = { version = "0.20.0", default-features = false }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+# only what the curl-backed fetcher uses — no `net`/`signal`/multi-thread runtime
+tokio = { version = "1.53.1", default-features = false, features = [
+    "rt", "macros", "process", "sync", "time", "fs", "io-util",
+] }
 
 [profile.release]
 opt-level = "s"

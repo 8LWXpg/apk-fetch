@@ -155,7 +155,9 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let rt = tokio::runtime::Builder::new_multi_thread()
+    // Single CLI invocation, all I/O-bound (curl subprocesses, sequential
+    // provider calls) — a current-thread runtime is plenty.
+    let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
