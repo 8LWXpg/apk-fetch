@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/core",
-    "crates/fetch",
-    "crates/providers/apkmirror",
-    "crates/providers/apkpure",
-    "crates/providers/apkcombo",
-    "crates/providers/uptodown",
-    "crates/cli",
+  "crates/cli",
+  "crates/core",
+  "crates/fetch",
+  "crates/providers/apkcombo",
+  "crates/providers/apkmirror",
+  "crates/providers/apkpure",
+  "crates/providers/uptodown",
 ]
 
 [workspace.package]
@@ -16,20 +16,29 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-apk-fetch-core = { path = "crates/core" }
-apk-fetch-fetch = { path = "crates/fetch" }
+apk-fetch-apkcombo = { path = "crates/providers/apkcombo" }
 apk-fetch-apkmirror = { path = "crates/providers/apkmirror" }
 apk-fetch-apkpure = { path = "crates/providers/apkpure" }
-apk-fetch-apkcombo = { path = "crates/providers/apkcombo" }
+apk-fetch-core = { path = "crates/core" }
+apk-fetch-fetch = { path = "crates/fetch" }
 apk-fetch-uptodown = { path = "crates/providers/uptodown" }
 
-async-trait = "0.1"
-tokio = { version = "1", features = ["full"] }
-scraper = "0.20"
-clap = { version = "4", features = ["derive"] }
-thiserror = "2"
-anyhow = "1"
-colored = "2"
-indicatif = "0.17"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Exact pins: this is a scraper — a direct-dep API change breaks parsing silently.
+# Bump deliberately; the committed Cargo.lock keeps transitive deps reproducible too.
+anyhow = "=1.0.104"
+async-trait = "=0.1.92"
+clap = { version = "=4.6.6", features = ["derive"] }
+colored = "=2.2.0"
+indicatif = "=0.17.11"
+scraper = "=0.20.0"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+thiserror = "=2.0.20"
+tokio = { version = "=1.53.1", features = ["full"] }
+
+[profile.release]
+opt-level = "s"
+strip = true
+lto = true
+panic = "abort"
+codegen-units = 1
