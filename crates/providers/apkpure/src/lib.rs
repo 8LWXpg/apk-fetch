@@ -7,8 +7,8 @@
 
 mod parse;
 
-use apk_fetch_core::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use apk_fetch_fetch::{Fetcher, HttpFetcher};
+use provider::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 
 const NAME: &str = "apkpure";
@@ -88,7 +88,7 @@ impl Provider for ApkPure {
         };
 
         Ok(DownloadTarget {
-            filename: apk_fetch_core::download_filename(pkg, &label, None, "apk"),
+            filename: provider::download_filename(pkg, &label, None, "apk"),
             url: parse::download_url(pkg, &endpoint_version),
             version: Some(label),
             arch: None,

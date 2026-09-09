@@ -5,8 +5,8 @@
 
 mod parse;
 
-use apk_fetch_core::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use apk_fetch_fetch::{Fetcher, HttpFetcher};
+use provider::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 
 const NAME: &str = "apkmirror";
@@ -155,7 +155,7 @@ impl Provider for ApkMirror {
         let version_label = resolved_version.unwrap_or_else(|| "latest".to_string());
         let ext = if is_bundle { "xapk" } else { "apk" };
         Ok(DownloadTarget {
-            filename: apk_fetch_core::download_filename(
+            filename: provider::download_filename(
                 pkg,
                 &version_label,
                 resolved_arch.as_deref(),

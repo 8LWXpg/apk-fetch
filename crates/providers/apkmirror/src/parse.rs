@@ -4,7 +4,7 @@
 //! Selectors are `const &str` on purpose (spec): externalise to config only after
 //! a real breakage proves it's needed.
 
-use apk_fetch_core::ProviderError;
+use provider::ProviderError;
 use scraper::{Html, Selector};
 
 pub const BASE_URL: &str = "https://www.apkmirror.com";

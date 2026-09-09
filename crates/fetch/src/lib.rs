@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use apk_fetch_core::ProviderError;
+use provider::ProviderError;
 use async_trait::async_trait;
 use tokio::process::Command;
 use tokio::sync::Mutex;

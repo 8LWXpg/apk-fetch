@@ -6,11 +6,10 @@ mod commands;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use apk_fetch_apkcombo::ApkCombo;
-use apk_fetch_apkmirror::ApkMirror;
-use apk_fetch_apkpure::ApkPure;
-use apk_fetch_core::{ProviderRegistry, error};
-use apk_fetch_uptodown::Uptodown;
+use apk_fetch::core::{ProviderRegistry, error};
+use apk_fetch::providers::{
+    apkcombo::ApkCombo, apkmirror::ApkMirror, apkpure::ApkPure, uptodown::Uptodown,
+};
 use clap::builder::styling;
 use clap::{Parser, Subcommand};
 

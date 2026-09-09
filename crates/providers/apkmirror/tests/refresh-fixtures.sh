@@ -72,4 +72,4 @@ else
   echo "usage: $0 [<app> <package-id>]" >&2; exit 2
 fi
 
-echo "done — now: cargo test -p apk-fetch-apkmirror"
+echo "done — now: cargo test -p apkmirror"

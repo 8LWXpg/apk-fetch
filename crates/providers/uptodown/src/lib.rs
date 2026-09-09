@@ -9,8 +9,8 @@
 
 mod parse;
 
-use apk_fetch_core::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use apk_fetch_fetch::{Fetcher, HttpFetcher};
+use provider::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 
 const NAME: &str = "uptodown";

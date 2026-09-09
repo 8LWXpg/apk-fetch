@@ -4,17 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "apk_fetch"
+path = "src/lib.rs"
+
 [[bin]]
 name = "apk-fetch"
 path = "src/main.rs"
 
 [dependencies]
-apk-fetch-core.workspace = true
-apk-fetch-fetch.workspace = true
-apk-fetch-apkmirror.workspace = true
-apk-fetch-apkpure.workspace = true
-apk-fetch-apkcombo.workspace = true
-apk-fetch-uptodown.workspace = true
+provider.workspace = true
+fetch.workspace = true
+apkmirror.workspace = true
+apkpure.workspace = true
+apkcombo.workspace = true
+uptodown.workspace = true
 tokio.workspace = true
 clap.workspace = true
 anyhow.workspace = true

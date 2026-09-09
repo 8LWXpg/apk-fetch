@@ -76,78 +76,48 @@ name = "apk-fetch"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "apk-fetch-apkcombo",
- "apk-fetch-apkmirror",
- "apk-fetch-apkpure",
- "apk-fetch-core",
- "apk-fetch-fetch",
- "apk-fetch-uptodown",
+ "apkcombo",
+ "apkmirror",
+ "apkpure",
  "clap",
  "colored",
+ "fetch",
  "indicatif",
+ "provider",
  "serde",
  "serde_json",
  "tokio",
+ "uptodown",
 ]
 
 [[package]]
-name = "apk-fetch-apkcombo"
+name = "apkcombo"
 version = "0.1.0"
 dependencies = [
- "apk-fetch-core",
- "apk-fetch-fetch",
  "async-trait",
+ "fetch",
+ "provider",
  "scraper",
 ]
 
 [[package]]
-name = "apk-fetch-apkmirror"
+name = "apkmirror"
 version = "0.1.0"
 dependencies = [
- "apk-fetch-core",
- "apk-fetch-fetch",
  "async-trait",
+ "fetch",
+ "provider",
  "scraper",
 ]
 
 [[package]]
-name = "apk-fetch-apkpure"
+name = "apkpure"
 version = "0.1.0"
 dependencies = [
- "apk-fetch-core",
- "apk-fetch-fetch",
  "async-trait",
+ "fetch",
+ "provider",
  "scraper",
-]
-
-[[package]]
-name = "apk-fetch-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "colored",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "apk-fetch-fetch"
-version = "0.1.0"
-dependencies = [
- "apk-fetch-core",
- "async-trait",
- "tokio",
-]
-
-[[package]]
-name = "apk-fetch-uptodown"
-version = "0.1.0"
-dependencies = [
- "apk-fetch-core",
- "apk-fetch-fetch",
- "async-trait",
- "scraper",
- "serde_json",
 ]
 
 [[package]]
@@ -329,6 +299,15 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "fetch"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "provider",
+ "tokio",
 ]
 
 [[package]]
@@ -691,6 +670,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "provider"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "colored",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1003,6 +992,17 @@ name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+
+[[package]]
+name = "uptodown"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "fetch",
+ "provider",
+ "scraper",
+ "serde_json",
+]
 
 [[package]]
 name = "utf-8"

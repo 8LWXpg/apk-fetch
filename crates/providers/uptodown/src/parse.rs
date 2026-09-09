@@ -2,7 +2,7 @@
 //! the actual APK download is gated behind Cloudflare Turnstile, so `download_url`
 //! in `lib.rs` reports `Blocked` and the resolver fails over.
 
-use apk_fetch_core::ProviderError;
+use provider::ProviderError;
 use scraper::{Html, Selector};
 
 pub const SEARCH_URL: &str = "https://en.uptodown.com/android/search";

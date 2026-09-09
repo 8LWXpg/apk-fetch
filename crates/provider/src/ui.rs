@@ -1,5 +1,5 @@
 //! Shared user-facing output macros. All `#[macro_export]` so they land at the
-//! crate root: `apk_fetch_core::info!`, etc.
+//! crate root: `provider::info!`, etc.
 
 /// General base: `print_message!("·", cyan, "trying {}", name)`.
 #[macro_export]

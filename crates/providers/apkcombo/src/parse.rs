@@ -8,7 +8,7 @@
 //!   POST `/checkin`     -> `fp=...&ip=...` token
 //!   final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en`  -> 302 -> CDN
 
-use apk_fetch_core::ProviderError;
+use provider::ProviderError;
 use scraper::{Html, Selector};
 
 pub const BASE_URL: &str = "https://apkcombo.com";

@@ -4,10 +4,10 @@
 use std::path::Path;
 
 use anyhow::anyhow;
-use apk_fetch_core::{
+use apk_fetch::core::{
     ProviderError, ProviderRegistry, ResolveError, error, info, success, warn,
 };
-use apk_fetch_fetch::HttpFetcher;
+use apk_fetch::fetch::HttpFetcher;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::{AppError, DEFAULT_PRIORITY, EXIT_BLOCKED, EXIT_NETWORK, EXIT_NOT_FOUND};
@@ -69,7 +69,7 @@ pub async fn search(
                     println!("{}", serde_json::to_string_pretty(&results)?);
                 } else {
                     for r in &results {
-                        apk_fetch_core::print_message!(
+                        apk_fetch::core::print_message!(
                             "→", cyan, "{}  {}  ({})", r.package, r.title, r.provider
                         );
                     }
@@ -103,7 +103,7 @@ pub async fn versions(
         println!("{}", serde_json::to_string_pretty(&list)?);
     } else {
         for v in &list {
-            apk_fetch_core::print_message!("→", cyan, "{}  ({})", v.version, v.provider);
+            apk_fetch::core::print_message!("→", cyan, "{}  ({})", v.version, v.provider);
         }
     }
     Ok(())
@@ -203,8 +203,8 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
     }
     for name in &names {
         match default.iter().position(|d| d == name) {
-            Some(i) => apk_fetch_core::print_message!("→", cyan, "{}  (priority {})", name, i + 1),
-            None => apk_fetch_core::print_message!("→", cyan, "{}  (not in default priority)", name),
+            Some(i) => apk_fetch::core::print_message!("→", cyan, "{}  (priority {})", name, i + 1),
+            None => apk_fetch::core::print_message!("→", cyan, "{}  (not in default priority)", name),
         }
     }
     Ok(())

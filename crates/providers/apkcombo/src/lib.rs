@@ -4,8 +4,8 @@
 
 mod parse;
 
-use apk_fetch_core::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use apk_fetch_fetch::{Fetcher, HttpFetcher};
+use provider::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 
 const NAME: &str = "apkcombo";
@@ -131,7 +131,7 @@ impl Provider for ApkCombo {
         let ext = if variant.kind.eq_ignore_ascii_case("XAPK") { "xapk" } else { "apk" };
         let variant_arch = variant.arch.first().cloned();
         Ok(DownloadTarget {
-            filename: apk_fetch_core::download_filename(
+            filename: provider::download_filename(
                 pkg,
                 &resolved_version,
                 variant_arch.as_deref(),

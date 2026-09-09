@@ -59,4 +59,4 @@ elif [[ $# -eq 0 ]]; then for a in "${!APPS[@]}"; do refresh_app "$a" "${APPS[$a
 else echo "usage: $0 [<app> <package-id>]" >&2; exit 2
 fi
 
-echo "done — now: cargo test -p apk-fetch-apkcombo"
+echo "done — now: cargo test -p apkcombo"

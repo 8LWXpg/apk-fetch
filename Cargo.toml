@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   "crates/cli",
-  "crates/core",
+  "crates/provider",
   "crates/fetch",
   "crates/providers/apkcombo",
   "crates/providers/apkmirror",
@@ -16,25 +16,22 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-apk-fetch-apkcombo = { path = "crates/providers/apkcombo" }
-apk-fetch-apkmirror = { path = "crates/providers/apkmirror" }
-apk-fetch-apkpure = { path = "crates/providers/apkpure" }
-apk-fetch-core = { path = "crates/core" }
-apk-fetch-fetch = { path = "crates/fetch" }
-apk-fetch-uptodown = { path = "crates/providers/uptodown" }
+apkcombo = { path = "crates/providers/apkcombo" }
+apkmirror = { path = "crates/providers/apkmirror" }
+apkpure = { path = "crates/providers/apkpure" }
+provider = { path = "crates/provider" }
+fetch = { path = "crates/fetch" }
+uptodown = { path = "crates/providers/uptodown" }
 
 anyhow = "1.0.104"
 async-trait = "0.1.92"
 clap = { version = "4.6.6", features = ["derive"] }
 colored = "2.2.0"
 indicatif = "0.17.11"
-# default is ["main", "errors"]; drop `main` (scraper's own CLI binary + getopts),
-# keep `errors` (no deps — adds the `Html.errors` parse-diagnostics field)
 scraper = { version = "0.20.0", default-features = false, features = ["errors"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.20"
-# tokio has no default features; list only what the curl-backed fetcher uses
 tokio = {
   version = "1.53.1",
   features = [
