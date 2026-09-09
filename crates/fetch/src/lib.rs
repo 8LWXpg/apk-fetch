@@ -100,9 +100,9 @@ fn curl_exit_is_transient(code: Option<i32>) -> bool {
     matches!(code, Some(6 | 7 | 28 | 35 | 52 | 55 | 56))
 }
 
-fn map_http_status(code: u16) -> Option<ProviderError> {
+fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
     match code {
-        404 | 410 => Some(ProviderError::NotFound),
+        404 | 410 => Some(ProviderError::NotFound(format!("got {code} for {url}"))),
         403 | 429 => Some(ProviderError::Blocked { retry_after: None }),
         s if s >= 500 => Some(network_err(format!("upstream returned {s}"))),
         _ => None,
@@ -226,7 +226,7 @@ impl HttpFetcher {
             let (body, status_line) = stdout.rsplit_once('\n').unwrap_or((&stdout, "0"));
             let status: u16 = status_line.trim().parse().unwrap_or(0);
 
-            if let Some(err) = map_http_status(status) {
+            if let Some(err) = map_http_status(status, url) {
                 if matches!(err, ProviderError::Network(_)) && attempt < MAX_RETRIES {
                     attempt += 1;
                     tokio::time::sleep(RETRY_BASE_BACKOFF * attempt).await;
@@ -362,15 +362,19 @@ mod tests {
 
     #[test]
     fn status_mapping() {
+        let u = "https://x/y";
         assert!(matches!(
-            map_http_status(403),
+            map_http_status(403, u),
             Some(ProviderError::Blocked { .. })
         ));
         assert!(matches!(
-            map_http_status(429),
+            map_http_status(429, u),
             Some(ProviderError::Blocked { .. })
         ));
-        assert!(matches!(map_http_status(404), Some(ProviderError::NotFound)));
-        assert!(map_http_status(200).is_none());
+        assert!(matches!(
+            map_http_status(404, u),
+            Some(ProviderError::NotFound(_))
+        ));
+        assert!(map_http_status(200, u).is_none());
     }
 }

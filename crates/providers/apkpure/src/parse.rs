@@ -69,7 +69,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
         });
     }
     if hits.is_empty() {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("search returned nothing".into()));
     }
     Ok(hits)
 }
@@ -104,7 +104,7 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
         })
         .collect();
     if rows.is_empty() {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("no versions listed".into()));
     }
     Ok(rows)
 }
@@ -121,6 +121,15 @@ pub fn latest_version(html: &str) -> Option<String> {
         .find_map(|el| el.value().attr("data-dt-version"))
         .map(clean_version)
         .filter(|s| !s.is_empty())
+}
+
+/// Loose match for a user-supplied `--version`: exact, or a leading dotted-segment
+/// prefix (`2.6` matches `2.6.2`, not `2.60`).
+pub fn version_matches(version: &str, want: &str) -> bool {
+    version == want
+        || version
+            .strip_prefix(want)
+            .is_some_and(|rest| rest.starts_with('.'))
 }
 
 fn pct(s: &str) -> String {
@@ -216,6 +225,14 @@ mod tests {
                 "{app}: a version string is malformed"
             );
         }
+    }
+
+    #[test]
+    fn version_matches_is_boundary_aware() {
+        assert!(version_matches("2.6.2", "2.6.2"));
+        assert!(version_matches("2.6.2", "2.6"));
+        assert!(!version_matches("2.60", "2.6"));
+        assert!(!version_matches("12.6.2", "2.6"));
     }
 
     #[test]

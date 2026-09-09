@@ -1,32 +1,37 @@
-//! One handler per subcommand. All business logic lives in `core` / `fetch` /
+//! One handler per subcommand. All business logic lives in `contract` / `fetch` /
 //! `providers`; these just orchestrate calls and render output.
 
 use std::path::Path;
 
 use anyhow::anyhow;
 use apk_fetch::contract::{
-    AppResult, ProviderError, ProviderRegistry, ResolveError, error, info, success, warn,
+    AppResult, ProviderId, ProviderError, ProviderFailure, ProviderRegistry, ResolveError, error,
+    info, success, warn,
 };
 use apk_fetch::fetch::HttpFetcher;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use unicode_width::UnicodeWidthStr;
 
-use crate::{AppError, DEFAULT_PRIORITY, EXIT_BLOCKED, EXIT_NETWORK, EXIT_NOT_FOUND};
+use crate::{AppError, EXIT_BLOCKED, EXIT_NETWORK, EXIT_NOT_FOUND};
+
+/// First entry of the default priority — the single provider `search` / `versions`
+/// / plain `get` use when none is named.
+const DEFAULT_PROVIDER: ProviderId = ProviderId::DEFAULT_PRIORITY[0];
 
 fn provider_error_code(e: &ProviderError) -> u8 {
     match e {
-        ProviderError::NotFound => EXIT_NOT_FOUND,
+        ProviderError::NotFound(_) => EXIT_NOT_FOUND,
         ProviderError::Blocked { .. } | ProviderError::RateLimited => EXIT_BLOCKED,
         ProviderError::Network(_) => EXIT_NETWORK,
         ProviderError::ParseError(_) => crate::EXIT_GENERIC,
     }
 }
 
-fn provider_err(name: &str, e: ProviderError) -> AppError {
+fn provider_fail(f: ProviderFailure) -> AppError {
     AppError {
-        code: provider_error_code(&e),
-        source: anyhow!("{name}: {e}"),
+        code: provider_error_code(&f.source),
+        source: anyhow!("{f}"),
     }
 }
 
@@ -46,20 +51,14 @@ fn resolve_err(e: ResolveError) -> AppError {
     }
 }
 
-fn order<'a>(provider: Option<&'a str>, priority: &'a [String]) -> Vec<&'a str> {
-    match provider {
-        Some(p) => vec![p],
-        None => priority.iter().map(String::as_str).collect(),
-    }
-}
-
-/// `{title}  {version}  {package}`, columns padded to line up.
-fn render_results(provider: &str, results: &[AppResult]) {
+/// `• {title}  {version}  {package}`, columns padded to line up, under a
+/// provider-name header.
+fn render_results(provider: ProviderId, results: &[AppResult]) {
     // Pad `s` to `w` terminal columns, then colour — `{:<w$}` counts chars, which
     // is wrong for CJK / wide glyphs, so measure with unicode-width instead.
     let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
 
-    println!("{}", provider.cyan().bold());
+    println!("{}", provider.as_str().cyan().bold());
     let tw = results.iter().map(|r| r.title.width()).max().unwrap_or(0);
     let vw = results
         .iter()
@@ -80,52 +79,75 @@ fn render_results(provider: &str, results: &[AppResult]) {
     }
 }
 
+/// Search every provider in `providers` (or all registered ones when `all`, or
+/// just the default when neither) and show each one's hits — this is discovery,
+/// not download failover, so we don't stop at the first that answers.
 pub async fn search(
     registry: &ProviderRegistry,
     query: &str,
-    provider: Option<&str>,
-    priority: &[String],
+    providers: &[ProviderId],
+    all: bool,
     json: bool,
 ) -> Result<(), AppError> {
+    let targets: Vec<ProviderId> = if all {
+        registry.names()
+    } else if providers.is_empty() {
+        vec![DEFAULT_PROVIDER]
+    } else {
+        providers.to_vec()
+    };
+
+    let mut merged: Vec<AppResult> = Vec::new();
+    let mut hit = false;
     let mut last: Option<AppError> = None;
-    for name in order(provider, priority) {
-        let Some(p) = registry.get(name) else {
-            continue;
-        };
-        info!("searching {}...", name);
-        match p.search(query).await {
-            Ok(results) if results.is_empty() => continue,
-            Ok(results) => {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&results)?);
-                } else {
-                    render_results(name, &results);
+    for id in targets {
+        if !json {
+            info!("searching {}...", id);
+        }
+        match registry.search(id, query).await {
+            Ok(results) if results.is_empty() => {
+                if !json {
+                    warn!("{}: no results", id);
                 }
-                return Ok(());
             }
-            Err(e) => {
-                warn!("{}: {}", name, e);
-                last = Some(provider_err(name, e));
+            Ok(results) => {
+                hit = true;
+                if json {
+                    merged.extend(results);
+                } else {
+                    render_results(id, &results);
+                }
+            }
+            Err(f) => {
+                if !json {
+                    warn!("{f}");
+                }
+                last = Some(provider_fail(f));
             }
         }
     }
-    Err(last.unwrap_or(AppError {
-        code: EXIT_NOT_FOUND,
-        source: anyhow!("no results for '{query}'"),
-    }))
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&merged)?);
+    }
+    if hit {
+        Ok(())
+    } else {
+        Err(last.unwrap_or(AppError {
+            code: EXIT_NOT_FOUND,
+            source: anyhow!("no results for '{query}'"),
+        }))
+    }
 }
 
 pub async fn versions(
     registry: &ProviderRegistry,
     pkg: &str,
-    provider: Option<&str>,
+    provider: Option<ProviderId>,
     json: bool,
 ) -> Result<(), AppError> {
-    let name = provider.unwrap_or_else(|| DEFAULT_PRIORITY.split(',').next().unwrap());
-    let p = registry
-        .get(name)
-        .ok_or_else(|| AppError::from(anyhow!("unknown provider '{name}'")))?;
-    let list = p.versions(pkg).await.map_err(|e| provider_err(name, e))?;
+    let id = provider.unwrap_or(DEFAULT_PROVIDER);
+    let list = registry.versions(id, pkg).await.map_err(provider_fail)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&list)?);
     } else {
@@ -141,37 +163,29 @@ pub async fn get(
     registry: &ProviderRegistry,
     pkg: &str,
     version: Option<&str>,
-    provider: Option<&str>,
-    priority: &[String],
+    provider: Option<ProviderId>,
+    priority: &[ProviderId],
     arch: &str,
     output: &Path,
     fallback: bool,
     json: bool,
 ) -> Result<(), AppError> {
-    let target = if let Some(name) = provider {
-        let p = registry
-            .get(name)
-            .ok_or_else(|| AppError::from(anyhow!("unknown provider '{name}'")))?;
-        info!("resolving {} via {}...", pkg, name);
-        p.download_url(pkg, version, arch)
-            .await
-            .map_err(|e| provider_err(name, e))?
-    } else if fallback {
-        let ord = order(None, priority);
-        info!("resolving {} (fallback: {})...", pkg, ord.join(" -> "));
+    let target = if fallback && provider.is_none() {
+        let order: Vec<&str> = priority.iter().map(|p| p.as_str()).collect();
+        info!("resolving {} (fallback: {})...", pkg, order.join(" -> "));
         registry
-            .resolve_with_fallback(pkg, version, arch, &ord)
+            .resolve_with_fallback(pkg, version, arch, priority)
             .await
             .map_err(resolve_err)?
     } else {
-        let name = priority.first().map(String::as_str).unwrap_or("apkmirror");
-        let p = registry
-            .get(name)
-            .ok_or_else(|| AppError::from(anyhow!("unknown provider '{name}'")))?;
-        info!("resolving {} via {}...", pkg, name);
-        p.download_url(pkg, version, arch)
+        let id = provider
+            .or_else(|| priority.first().copied())
+            .unwrap_or(DEFAULT_PROVIDER);
+        info!("resolving {} via {}...", pkg, id);
+        registry
+            .download_url(id, pkg, version, arch)
             .await
-            .map_err(|e| provider_err(name, e))?
+            .map_err(provider_fail)?
     };
 
     std::fs::create_dir_all(output).map_err(|e| AppError {
@@ -218,26 +232,20 @@ pub async fn get(
 }
 
 pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
-    let default: Vec<&str> = DEFAULT_PRIORITY.split(',').collect();
+    let default = ProviderId::DEFAULT_PRIORITY;
+    let rank = |id: &ProviderId| default.iter().position(|d| d == id).map(|i| i + 1);
     let names = registry.names();
     if json {
         let rows: Vec<_> = names
             .iter()
-            .map(|n| {
-                serde_json::json!({
-                    "name": n,
-                    "priority": default.iter().position(|d| d == n).map(|i| i + 1),
-                })
-            })
+            .map(|n| serde_json::json!({ "name": n, "priority": rank(n) }))
             .collect();
         println!("{}", serde_json::to_string_pretty(&rows)?);
         return Ok(());
     }
     for name in &names {
-        match default.iter().position(|d| d == name) {
-            Some(i) => {
-                apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i + 1)
-            }
+        match rank(name) {
+            Some(i) => apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i),
             None => apk_fetch::contract::print_message!(
                 "•",
                 cyan,
@@ -251,32 +259,29 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
 
 pub async fn providers_check(
     registry: &ProviderRegistry,
-    name: Option<&str>,
+    name: Option<ProviderId>,
     json: bool,
 ) -> Result<(), AppError> {
-    let targets: Vec<&str> = match name {
+    let targets: Vec<ProviderId> = match name {
         Some(n) => vec![n],
         None => registry.names(),
     };
     let mut results = Vec::new();
     let mut worst: Option<AppError> = None;
-    for n in targets {
-        let Some(p) = registry.get(n) else {
-            return Err(AppError::from(anyhow!("unknown provider '{n}'")));
-        };
-        match p.check().await {
+    for id in targets {
+        match registry.check(id).await {
             Ok(()) => {
-                results.push((n, "ok".to_string()));
+                results.push((id, "ok".to_string()));
                 if !json {
-                    success!("{}: ok", n);
+                    success!("{}: ok", id);
                 }
             }
-            Err(e) => {
-                results.push((n, format!("{e}")));
+            Err(f) => {
+                results.push((id, format!("{}", f.source)));
                 if !json {
-                    error!("{}: {}", n, e);
+                    error!("{f}");
                 }
-                worst = Some(provider_err(n, e));
+                worst = Some(provider_fail(f));
             }
         }
     }

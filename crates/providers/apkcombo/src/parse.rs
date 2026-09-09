@@ -109,7 +109,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
         })
         .collect();
     if hits.is_empty() {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("search returned nothing".into()));
     }
     Ok(hits)
 }
@@ -145,7 +145,7 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
         })
         .collect();
     if rows.is_empty() {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("no versions listed".into()));
     }
     Ok(rows)
 }

@@ -7,11 +7,11 @@
 
 mod parse;
 
-use contract::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
+use contract::{AppResult, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 
-const NAME: &str = "apkpure";
+const NAME: ProviderId = ProviderId::Apkpure;
 
 pub struct ApkPure {
     fetcher: HttpFetcher,
@@ -33,12 +33,16 @@ impl Default for ApkPure {
 
 #[async_trait]
 impl Provider for ApkPure {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> ProviderId {
         NAME
     }
 
     async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError> {
-        let url = format!("{}/search?q={}", parse::BASE_URL, query.trim().replace(' ', "+"));
+        let url = format!(
+            "{}/search?q={}",
+            parse::BASE_URL,
+            query.trim().replace(' ', "+")
+        );
         let html = self.fetcher.get_text(&url).await?;
         Ok(parse::parse_search(&html)?
             .into_iter()
@@ -47,7 +51,7 @@ impl Provider for ApkPure {
                 title: h.title,
                 version: None,
                 developer: h.developer,
-                provider: NAME.to_string(),
+                provider: NAME,
             })
             .collect())
     }
@@ -61,7 +65,7 @@ impl Provider for ApkPure {
                 version: r.version,
                 version_code: r.version_code,
                 uploaded: None,
-                provider: NAME.to_string(),
+                provider: NAME,
             })
             .collect())
     }
@@ -73,17 +77,31 @@ impl Provider for ApkPure {
         _arch: &str,
     ) -> Result<DownloadTarget, ProviderError> {
         // `endpoint_version` is what we hand apkpure; `label` is for the filename.
-        // When no version is pinned we ask for "latest" (a specific version string
-        // isn't always URL-safe) but still resolve the real one for the name — the
-        // app-page GET also 404s -> NotFound for an unknown package.
+        // A pinned version is confirmed against the versions list (and normalised
+        // to apkpure's own string) so a typo / missing build fails over instead of
+        // silently downloading "latest". Unpinned: ask for "latest" but resolve the
+        // real number for the name. Either GET also 404s -> NotFound for an unknown
+        // package.
         let (endpoint_version, label) = match version {
-            Some(v) => (v.to_string(), v.to_string()),
+            Some(want) => {
+                let html = self
+                    .fetcher
+                    .get_text(&format!("{}/x/{}/versions", parse::BASE_URL, pkg))
+                    .await?;
+                let v = parse::parse_versions(&html)?
+                    .into_iter()
+                    .map(|r| r.version)
+                    .find(|v| parse::version_matches(v, want))
+                    .ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?;
+                (v.clone(), v)
+            }
             None => {
                 let html = self
                     .fetcher
                     .get_text(&format!("{}/x/{}", parse::BASE_URL, pkg))
                     .await?;
-                let label = parse::latest_version(&html).ok_or(ProviderError::NotFound)?;
+                let label = parse::latest_version(&html)
+                    .ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))?;
                 ("latest".to_string(), label)
             }
         };
@@ -93,7 +111,7 @@ impl Provider for ApkPure {
             url: parse::download_url(pkg, &endpoint_version),
             version: Some(label),
             arch: None,
-            provider: NAME.to_string(),
+            provider: NAME,
             headers: Vec::new(),
         })
     }

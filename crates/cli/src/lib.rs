@@ -7,5 +7,4 @@ pub mod providers {
     pub use apkcombo;
     pub use apkmirror;
     pub use apkpure;
-    pub use uptodown;
 }

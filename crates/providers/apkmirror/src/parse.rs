@@ -60,7 +60,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
     // A no-results page still renders a "you might also like" grid of unrelated
     // apps, so an empty selector match isn't enough — check the marker.
     if html.contains("No results found matching your query") {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("search returned nothing".into()));
     }
     // The results list ends where the "Popular / Latest Uploads" widgets begin;
     // those use `<h5 class="widgetHeader">` while the results header is a `<div>`.
@@ -81,7 +81,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
         })
         .collect();
     if hits.is_empty() {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("search returned nothing".into()));
     }
     Ok(hits)
 }
@@ -162,7 +162,7 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
         })
         .collect();
     if rows.is_empty() {
-        return Err(ProviderError::NotFound);
+        return Err(ProviderError::NotFound("no versions listed".into()));
     }
     Ok(rows)
 }
@@ -317,7 +317,7 @@ mod tests {
             // "Popular / Latest Uploads" widgets further down the page.
             if html.contains("No results found matching your query") {
                 assert!(
-                    matches!(parse_search(&html), Err(ProviderError::NotFound)),
+                    matches!(parse_search(&html), Err(ProviderError::NotFound(_))),
                     "{app}: no-results page didn't parse as NotFound"
                 );
                 continue;

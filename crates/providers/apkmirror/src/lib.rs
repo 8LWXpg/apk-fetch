@@ -5,11 +5,11 @@
 
 mod parse;
 
-use contract::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
+use contract::{AppResult, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 
-const NAME: &str = "apkmirror";
+const NAME: ProviderId = ProviderId::Apkmirror;
 
 pub struct ApkMirror {
     fetcher: HttpFetcher,
@@ -48,7 +48,7 @@ impl ApkMirror {
                         .any(|k| h.release_url.contains(k))
             })
             .or_else(|| hits.first())
-            .ok_or(ProviderError::NotFound)?;
+            .ok_or_else(|| ProviderError::NotFound(format!("search matched no app for {pkg:?}")))?;
         Ok(pick.release_url.clone())
     }
 }
@@ -61,7 +61,7 @@ impl Default for ApkMirror {
 
 #[async_trait]
 impl Provider for ApkMirror {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> ProviderId {
         NAME
     }
 
@@ -82,7 +82,7 @@ impl Provider for ApkMirror {
                     title,
                     version,
                     developer: None,
-                    provider: NAME.to_string(),
+                    provider: NAME,
                 })
             })
             .collect();
@@ -106,7 +106,7 @@ impl Provider for ApkMirror {
                 version: parse::version_token(&r.title),
                 version_code: None, // only on the per-version variants page
                 uploaded: r.uploaded,
-                provider: NAME.to_string(),
+                provider: NAME,
             })
             .collect())
     }
@@ -128,7 +128,7 @@ impl Provider for ApkMirror {
                 let rows = parse::parse_versions(&html)?;
                 rows.into_iter()
                     .find(|r| r.title.contains(want) || parse::version_token(&r.title) == want)
-                    .ok_or(ProviderError::NotFound)?
+                    .ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?
                     .version_page_url
             }
         };
@@ -141,7 +141,9 @@ impl Provider for ApkMirror {
             if variants.is_empty() {
                 (version.map(str::to_string), None, false, version_html)
             } else {
-                let v = parse::choose_variant(&variants, arch).ok_or(ProviderError::NotFound)?;
+                let v = parse::choose_variant(&variants, arch).ok_or_else(|| {
+                    ProviderError::NotFound(format!("no downloadable variant for {pkg}"))
+                })?;
                 let arch_token = v
                     .arch
                     .split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
@@ -172,7 +174,7 @@ impl Provider for ApkMirror {
             url: apk_url,
             version: Some(version_label),
             arch: resolved_arch,
-            provider: NAME.to_string(),
+            provider: NAME,
             // APKMirror's download.php checks the referring download page.
             headers: vec![("Referer".to_string(), button_url)],
         })

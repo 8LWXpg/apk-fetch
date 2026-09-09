@@ -4,11 +4,11 @@
 
 mod parse;
 
-use contract::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
-use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
+use contract::{AppResult, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo};
+use fetch::{Fetcher, HttpFetcher};
 
-const NAME: &str = "apkcombo";
+const NAME: ProviderId = ProviderId::Apkcombo;
 
 pub struct ApkCombo {
     fetcher: HttpFetcher,
@@ -16,11 +16,17 @@ pub struct ApkCombo {
 
 impl ApkCombo {
     pub fn new() -> Self {
-        Self { fetcher: HttpFetcher::new() }
+        Self {
+            fetcher: HttpFetcher::new(),
+        }
     }
 
     fn search_url(query: &str) -> String {
-        format!("{}/search?q={}", parse::BASE_URL, query.trim().replace(' ', "+"))
+        format!(
+            "{}/search?q={}",
+            parse::BASE_URL,
+            query.trim().replace(' ', "+")
+        )
     }
 
     /// package id -> `{slug}` URL segment. The bare app page `{BASE}/{pkg}/`
@@ -33,9 +39,10 @@ impl ApkCombo {
             .await?;
         // A bare page for an unknown package doesn't carry it canonically.
         if parse::app_page_package(&html).as_deref() != Some(pkg) {
-            return Err(ProviderError::NotFound);
+            return Err(ProviderError::NotFound(format!("no app page for {pkg}")));
         }
-        parse::slug_from_app_page(&html, pkg).ok_or(ProviderError::NotFound)
+        parse::slug_from_app_page(&html, pkg)
+            .ok_or_else(|| ProviderError::NotFound(format!("couldn't resolve a slug for {pkg}")))
     }
 }
 
@@ -47,7 +54,7 @@ impl Default for ApkCombo {
 
 #[async_trait]
 impl Provider for ApkCombo {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> ProviderId {
         NAME
     }
 
@@ -60,7 +67,7 @@ impl Provider for ApkCombo {
                 title: h.title,
                 version: None,
                 developer: None,
-                provider: NAME.to_string(),
+                provider: NAME,
             })
             .collect())
     }
@@ -75,7 +82,7 @@ impl Provider for ApkCombo {
                 version: parse::version_token(&r.name),
                 version_code: None,
                 uploaded: r.uploaded,
-                provider: NAME.to_string(),
+                provider: NAME,
             })
             .collect())
     }
@@ -100,7 +107,7 @@ impl Provider for ApkCombo {
                     .into_iter()
                     .find(|r| parse::version_token(&r.name) == want || r.name.contains(want))
                     .map(|r| r.download_page_url)
-                    .ok_or(ProviderError::NotFound)?
+                    .ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?
             }
         };
         let xid = parse::extract_xid(&self.fetcher.get_text(&dl_page).await?);
@@ -115,7 +122,7 @@ impl Provider for ApkCombo {
             .await?;
         let variants = parse::parse_variants(&frag)?;
         let variant = parse::choose_variant(&variants, arch, false)
-            .ok_or(ProviderError::NotFound)?;
+            .ok_or_else(|| ProviderError::NotFound(format!("no downloadable variant for {pkg}")))?;
 
         // Checkin token, then decorate the r2 link.
         let checkin = self
@@ -129,7 +136,11 @@ impl Provider for ApkCombo {
         } else {
             parse::version_token(&variant.version)
         };
-        let ext = if variant.kind.eq_ignore_ascii_case("XAPK") { "xapk" } else { "apk" };
+        let ext = if variant.kind.eq_ignore_ascii_case("XAPK") {
+            "xapk"
+        } else {
+            "apk"
+        };
         let variant_arch = variant.arch.first().cloned();
         Ok(DownloadTarget {
             filename: contract::download_filename(
@@ -141,7 +152,7 @@ impl Provider for ApkCombo {
             url,
             version: Some(resolved_version),
             arch: variant_arch,
-            provider: NAME.to_string(),
+            provider: NAME,
             headers: Vec::new(),
         })
     }

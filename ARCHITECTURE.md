@@ -17,9 +17,8 @@ Leaf crate packages have bare names; outside code reaches them through the
 | `apk_fetch::providers::apkmirror` (`providers/apkmirror`) | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
 | `apk_fetch::providers::apkpure` (`providers/apkpure`) | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
 | `apk_fetch::providers::apkcombo` (`providers/apkcombo`) | APKCombo — no Cloudflare/captcha; search → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
-| `apk_fetch::providers::uptodown` (`providers/uptodown`) | Uptodown — `search` + `versions` only; the download endpoint is Cloudflare-Turnstile-gated so `download_url` returns `Blocked`. |
 
-Default priority: `apkmirror,apkpure,apkcombo,uptodown`.
+Default priority: `apkcombo,apkpure,apkmirror`.
 
 Dependency direction is strictly `apk-fetch → providers → fetch → contract`;
 `contract` depends on nothing in the workspace. The umbrella lib
@@ -31,13 +30,25 @@ the binary reaches the leaves as `apk_fetch::…` with no extra crate.
 ```rust
 #[async_trait]
 pub trait Provider: Send + Sync {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> ProviderId;
     async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
     async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
     async fn download_url(&self, pkg: &str, version: Option<&str>, arch: &str) -> Result<DownloadTarget, ProviderError>;
     async fn check(&self) -> Result<(), ProviderError>; // default: a canned search
 }
 ```
+
+`ProviderId` is one enum (`Apkmirror | Apkpure | Apkcombo`) used end to
+end: the CLI parses `--provider` into it (clap `ValueEnum`), the registry is keyed
+by it, `AppResult` / `VersionInfo` / `DownloadTarget` carry it, and its
+`DEFAULT_PRIORITY` slice is the single source for `get` fallback order and the
+default single provider. Providers
+return a bare `ProviderError`; every call goes through `ProviderRegistry`
+(`search` / `versions` / `download_url` / `check`), which tags the failure with
+the id into a **`ProviderFailure`** (`Display` = `"{provider}: {source}"`). A bare
+`ProviderError` never reaches the CLI, so error messages always name the provider
+and the `NotFound` string never repeats it (`no app page for …`, not
+`apkpure: apkpure has no …`).
 
 `arch` is an ABI *preference* (`--arch`, default `arm64-v8a`), not a demand: a
 provider that has no exact match falls back to a universal build, and one that
@@ -54,8 +65,8 @@ slugs and has no package-id index; APKPure puts the package id straight in the
 URL), and a shared table would be the one file every contributor edits and every
 provider breakage routes through — the opposite of the isolation this design buys.
 
-Adding a site = one new crate implementing `Provider`, registered in
-`cli/src/main.rs::build_registry`. Zero edits to shared code.
+Adding a site = one new crate implementing `Provider`, a `ProviderId` arm, and a
+line in `cli/src/main.rs::build_registry`.
 
 `search` is the escape hatch: it returns `AppResult { package, .. }`, so when a
 site's own search-by-id is imperfect a user can `apk-fetch search <name>` to
@@ -67,8 +78,10 @@ APKMirror's own search ranks on a blind substring match (`s=line` floats
 `Lineage2M` and `Korean Air` above `LINE`) and returns one row per *release*, so
 `search` re-ranks the hits by query relevance (`parse::relevance`: whole-word hit
 beats prefix beats substring; stable, ties keep site order) and drops repeat
-apps. The CLI renders them as aligned `{title} {version} {package}` columns under
-a single provider-name header.
+apps. The CLI renders results as aligned `{title} {version} {package}` columns
+under a per-provider header. Unlike `get`, `search` is discovery, not failover:
+it queries every provider named in `--provider` (or all of them with `--all`, or
+just the top-priority one by default) and shows each one's hits.
 
 APKMirror has no package-id lookup, so every entrypoint starts from the site's own
 search (query = the package id), takes the top hit, then walks:
@@ -85,8 +98,10 @@ search results  ─▶ app page (version list)  ─▶ variants table
 
 APKPure is package-id-addressable: `/x/{pkg}` resolves to the app page and
 `d.apkpure.com/b/APK/{pkg}?version={v}` 302s straight to the APK. `download_url`
-only touches the app page to read the latest version string (and to 404 →
-`NotFound`); with `--version` pinned it skips even that.
+GETs one page to resolve the version: the app page for the latest string when
+unpinned, or `/x/{pkg}/versions` to confirm a `--version` pin exists (a missing
+build → `NotFound` → the resolver fails over, rather than the endpoint quietly
+serving "latest"). Either GET also 404s → `NotFound` for an unknown package.
 
 ### APKCombo resolution flow
 
@@ -97,17 +112,6 @@ No Cloudflare, no captcha on the download path (the page's reCAPTCHA is unrelate
 → `POST /checkin` returns an `fp=…&ip=…` token → `{r2_href}&{token}&package_name=…`
 302s to a signed R2 URL. Variant fragment parsing reads both the recommended
 (`#best-variant-tab`) and full (`#variants-tab`) lists.
-
-### Uptodown resolution flow
-
-Per-app subdomains (`spotify.en.uptodown.com`) keyed by app *name*, no package-id
-index. `resolve` searches name fragments of the id (`com.spotify.music` →
-`"spotify music"`, `"spotify"`, `"music"`) and confirms each candidate's app page
-carries the exact package id (`<th>Package Name</th>` row). `versions` then hits
-the JSON API `{base}/android/apps/{code}/versions/{n}`. The download endpoint
-(`POST /ajax/app/{id}/file/{fid}/download-url`) requires a Cloudflare Turnstile
-token an HTTP client can't produce, so `download_url` returns `Blocked` — the
-resolver fails over, and uptodown stays useful for discovery.
 
 ### Fixtures
 

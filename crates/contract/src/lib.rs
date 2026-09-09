@@ -8,6 +8,41 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// The known providers. One enum, used end to end: the CLI parses `--provider`
+/// into it, the registry is keyed by it, and every [`ProviderFailure`] carries it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderId {
+    Apkmirror,
+    Apkpure,
+    Apkcombo,
+}
+
+impl ProviderId {
+    /// Fallback order for `get`, and the single provider `search` / `versions`
+    /// use when none is named. (`ProviderId::value_variants()` from `ValueEnum`
+    /// gives the full set if you need it.)
+    pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
+        ProviderId::Apkcombo,
+        ProviderId::Apkpure,
+        ProviderId::Apkmirror,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ProviderId::Apkmirror => "apkmirror",
+            ProviderId::Apkpure => "apkpure",
+            ProviderId::Apkcombo => "apkcombo",
+        }
+    }
+}
+
+impl std::fmt::Display for ProviderId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A search hit for an app.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppResult {
@@ -18,7 +53,7 @@ pub struct AppResult {
     pub version: Option<String>,
     pub developer: Option<String>,
     /// Which provider produced this result.
-    pub provider: String,
+    pub provider: ProviderId,
 }
 
 /// One published version of an app.
@@ -27,7 +62,7 @@ pub struct VersionInfo {
     pub version: String,
     pub version_code: Option<String>,
     pub uploaded: Option<String>,
-    pub provider: String,
+    pub provider: ProviderId,
 }
 
 /// A concrete, fetchable APK: URL plus any headers the host requires (referer,
@@ -39,7 +74,7 @@ pub struct DownloadTarget {
     pub version: Option<String>,
     /// Architecture of the resolved variant (e.g. `arm64-v8a`, `universal`).
     pub arch: Option<String>,
-    pub provider: String,
+    pub provider: ProviderId,
     #[serde(default)]
     pub headers: Vec<(String, String)>,
 }
@@ -51,14 +86,27 @@ pub struct DownloadTarget {
 pub enum ProviderError {
     #[error("blocked by anti-bot / rate limit (challenge page, 403, or 429)")]
     Blocked { retry_after: Option<Duration> },
-    #[error("not found")]
-    NotFound,
+    /// The string says what was missing (e.g. `no app page for jp.naver.line.android`)
+    /// — a bare "not found" is useless in a failover log. The provider name is
+    /// added by [`ProviderFailure`], so the message must not repeat it.
+    #[error("{0}")]
+    NotFound(String),
     #[error("parse error: {0}")]
     ParseError(String),
     #[error("network error: {0}")]
     Network(#[from] std::io::Error),
     #[error("rate limited")]
     RateLimited,
+}
+
+/// A [`ProviderError`] tagged with which provider produced it. This is what leaves
+/// the [`ProviderRegistry`] — a bare `ProviderError` never reaches the CLI.
+#[derive(Debug, thiserror::Error)]
+#[error("{provider}: {source}")]
+pub struct ProviderFailure {
+    pub provider: ProviderId,
+    #[source]
+    pub source: ProviderError,
 }
 
 /// `{pkg}-{version}-{arch}.{ext}`, sanitised for a filesystem. `arch` is dropped
@@ -70,14 +118,20 @@ pub fn download_filename(pkg: &str, version: &str, arch: Option<&str>, ext: &str
     };
     let cleaned: String = stem
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("{cleaned}.{ext}")
 }
 
 #[async_trait]
 pub trait Provider: Send + Sync {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> ProviderId;
     async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
     async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
     /// Resolve a download. `arch` is an ABI preference (e.g. `arm64-v8a`); a
@@ -100,17 +154,19 @@ pub trait Provider: Send + Sync {
 #[derive(Debug)]
 pub struct ResolveError {
     pub pkg: String,
-    pub attempts: Vec<(String, ProviderError)>,
+    pub attempts: Vec<ProviderFailure>,
 }
 
 impl ResolveError {
     /// True if every attempt was a block / rate-limit (distinct exit code).
     pub fn all_blocked(&self) -> bool {
         !self.attempts.is_empty()
-            && self
-                .attempts
-                .iter()
-                .all(|(_, e)| matches!(e, ProviderError::Blocked { .. } | ProviderError::RateLimited))
+            && self.attempts.iter().all(|f| {
+                matches!(
+                    f.source,
+                    ProviderError::Blocked { .. } | ProviderError::RateLimited
+                )
+            })
     }
 
     /// True if every attempt was a clean "not found".
@@ -119,22 +175,22 @@ impl ResolveError {
             && self
                 .attempts
                 .iter()
-                .all(|(_, e)| matches!(e, ProviderError::NotFound))
+                .all(|f| matches!(f.source, ProviderError::NotFound(_)))
     }
 
     /// True if any attempt failed on the network (vs. parse / not-found).
     pub fn any_network(&self) -> bool {
         self.attempts
             .iter()
-            .any(|(_, e)| matches!(e, ProviderError::Network(_)))
+            .any(|f| matches!(f.source, ProviderError::Network(_)))
     }
 }
 
 impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "all providers failed for '{}':", self.pkg)?;
-        for (name, err) in &self.attempts {
-            write!(f, "\n  - {name}: {err}")?;
+        for attempt in &self.attempts {
+            write!(f, "\n  - {attempt}")?;
         }
         Ok(())
     }
@@ -142,7 +198,9 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-/// Holds configured providers and drives priority-ordered fallback.
+/// Holds configured providers and drives priority-ordered fallback. Every call
+/// through the registry tags failures with the [`ProviderId`], so callers get a
+/// [`ProviderFailure`], never a bare [`ProviderError`].
 #[derive(Default)]
 pub struct ProviderRegistry {
     providers: Vec<Box<dyn Provider>>,
@@ -157,20 +215,60 @@ impl ProviderRegistry {
         self.providers.push(provider);
     }
 
-    pub fn names(&self) -> Vec<&'static str> {
+    /// The registered providers, in registration order.
+    pub fn names(&self) -> Vec<ProviderId> {
         self.providers.iter().map(|p| p.name()).collect()
     }
 
-    pub fn get(&self, name: &str) -> Option<&dyn Provider> {
+    pub fn get(&self, id: ProviderId) -> Option<&dyn Provider> {
         self.providers
             .iter()
-            .find(|p| p.name() == name)
+            .find(|p| p.name() == id)
             .map(|b| b.as_ref())
     }
 
-    /// Providers named in `order`, in that order, skipping unknown names.
-    fn ordered<'a>(&'a self, order: &[&str]) -> Vec<&'a dyn Provider> {
-        order.iter().filter_map(|n| self.get(n)).collect()
+    fn tag<T>(id: ProviderId, r: Result<T, ProviderError>) -> Result<T, ProviderFailure> {
+        r.map_err(|source| ProviderFailure {
+            provider: id,
+            source,
+        })
+    }
+
+    /// Every `ProviderId` is registered by `build_registry`, and the CLI only ever
+    /// passes ids parsed from the enum — so a lookup miss is a programming error.
+    fn require(&self, id: ProviderId) -> &dyn Provider {
+        self.get(id)
+            .unwrap_or_else(|| panic!("provider {id} not registered"))
+    }
+
+    pub async fn search(
+        &self,
+        id: ProviderId,
+        query: &str,
+    ) -> Result<Vec<AppResult>, ProviderFailure> {
+        Self::tag(id, self.require(id).search(query).await)
+    }
+
+    pub async fn versions(
+        &self,
+        id: ProviderId,
+        pkg: &str,
+    ) -> Result<Vec<VersionInfo>, ProviderFailure> {
+        Self::tag(id, self.require(id).versions(pkg).await)
+    }
+
+    pub async fn download_url(
+        &self,
+        id: ProviderId,
+        pkg: &str,
+        version: Option<&str>,
+        arch: &str,
+    ) -> Result<DownloadTarget, ProviderFailure> {
+        Self::tag(id, self.require(id).download_url(pkg, version, arch).await)
+    }
+
+    pub async fn check(&self, id: ProviderId) -> Result<(), ProviderFailure> {
+        Self::tag(id, self.require(id).check().await)
     }
 
     /// Try each provider in `order`; return the first `download_url` success.
@@ -180,13 +278,13 @@ impl ProviderRegistry {
         pkg: &str,
         version: Option<&str>,
         arch: &str,
-        order: &[&str],
+        order: &[ProviderId],
     ) -> Result<DownloadTarget, ResolveError> {
         let mut attempts = Vec::new();
-        for provider in self.ordered(order) {
-            match provider.download_url(pkg, version, arch).await {
+        for &id in order {
+            match self.download_url(id, pkg, version, arch).await {
                 Ok(target) => return Ok(target),
-                Err(e) => attempts.push((provider.name().to_string(), e)),
+                Err(f) => attempts.push(f),
             }
         }
         Err(ResolveError {
