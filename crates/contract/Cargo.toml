@@ -1,5 +1,5 @@
 [package]
-name = "provider"
+name = "contract"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

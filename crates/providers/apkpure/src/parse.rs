@@ -1,7 +1,7 @@
 //! Pure HTML -> data parsers for APKPure pages. Network-free so they can be
 //! unit-tested against saved fixtures.
 
-use provider::ProviderError;
+use contract::ProviderError;
 use scraper::{Html, Selector};
 
 pub const BASE_URL: &str = "https://apkpure.com";

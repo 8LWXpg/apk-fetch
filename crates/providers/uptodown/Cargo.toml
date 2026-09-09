@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-provider.workspace = true
+contract.workspace = true
 fetch.workspace = true
 async-trait.workspace = true
 scraper.workspace = true

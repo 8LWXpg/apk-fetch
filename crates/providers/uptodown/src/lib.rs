@@ -9,7 +9,7 @@
 
 mod parse;
 
-use provider::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
+use contract::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
 use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 

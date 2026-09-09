@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   "crates/cli",
-  "crates/provider",
+  "crates/contract",
   "crates/fetch",
   "crates/providers/apkcombo",
   "crates/providers/apkmirror",
@@ -19,7 +19,7 @@ license = "MIT"
 apkcombo = { path = "crates/providers/apkcombo" }
 apkmirror = { path = "crates/providers/apkmirror" }
 apkpure = { path = "crates/providers/apkpure" }
-provider = { path = "crates/provider" }
+contract = { path = "crates/contract" }
 fetch = { path = "crates/fetch" }
 uptodown = { path = "crates/providers/uptodown" }
 

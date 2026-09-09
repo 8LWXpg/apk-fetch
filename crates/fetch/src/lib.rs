@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use provider::ProviderError;
+use contract::ProviderError;
 use async_trait::async_trait;
 use tokio::process::Command;
 use tokio::sync::Mutex;

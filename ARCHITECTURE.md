@@ -9,22 +9,22 @@ requests fails over to the next instead of taking the whole tool down.
 Leaf crate packages have bare names; outside code reaches them through the
 `apk_fetch::` umbrella.
 
-| Namespace (package · dir) | Responsibility |
+| Namespace (dir under `crates/`) | Responsibility |
 |---|---|
-| `apk_fetch` (`apk-fetch` · `crates/cli`, lib + bin) | Umbrella lib re-exporting the below, plus the clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
-| `apk_fetch::core` (`provider` · `crates/provider`) | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. Named `provider` because a crate literally named `core` shadows the `core` sysroot crate and breaks derive macros. |
+| `apk_fetch` (`cli`, package `apk-fetch`, lib + bin) | Umbrella lib re-exporting the below, plus the clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
+| `apk_fetch::contract` (`contract`) | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. (Not called `core` — a crate by that name shadows the `core` sysroot crate and breaks derive macros.) |
 | `apk_fetch::fetch` (`fetch`) | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection, `GET` + multipart `POST`. |
-| `apk_fetch::providers::apkmirror` (`apkmirror`) | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
-| `apk_fetch::providers::apkpure` (`apkpure`) | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
-| `apk_fetch::providers::apkcombo` (`apkcombo`) | APKCombo — no Cloudflare/captcha; search → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
-| `apk_fetch::providers::uptodown` (`uptodown`) | Uptodown — `search` + `versions` only; the download endpoint is Cloudflare-Turnstile-gated so `download_url` returns `Blocked`. |
+| `apk_fetch::providers::apkmirror` (`providers/apkmirror`) | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
+| `apk_fetch::providers::apkpure` (`providers/apkpure`) | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
+| `apk_fetch::providers::apkcombo` (`providers/apkcombo`) | APKCombo — no Cloudflare/captcha; search → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
+| `apk_fetch::providers::uptodown` (`providers/uptodown`) | Uptodown — `search` + `versions` only; the download endpoint is Cloudflare-Turnstile-gated so `download_url` returns `Blocked`. |
 
 Default priority: `apkmirror,apkpure,apkcombo,uptodown`.
 
-Dependency direction is strictly `cli → providers → fetch → provider`; `provider`
-depends on nothing in the workspace. The umbrella lib (`crates/cli/src/lib.rs`)
-lives beside `main.rs` in the `apk-fetch` package, so the binary reaches the
-leaves as `apk_fetch::…` with no extra crate.
+Dependency direction is strictly `apk-fetch → providers → fetch → contract`;
+`contract` depends on nothing in the workspace. The umbrella lib
+(`crates/cli/src/lib.rs`) lives beside `main.rs` in the `apk-fetch` package, so
+the binary reaches the leaves as `apk_fetch::…` with no extra crate.
 
 ## The `Provider` trait boundary
 
@@ -43,7 +43,7 @@ pub trait Provider: Send + Sync {
 provider that has no exact match falls back to a universal build, and one that
 serves a single build per app (APKPure) ignores it. The resolved variant's arch
 comes back in `DownloadTarget.arch` and in the filename,
-`{pkg}-{version}-{arch}.{apk|xapk}` (`core::download_filename`; `arch` is dropped
+`{pkg}-{version}-{arch}.{apk|xapk}` (`contract::download_filename`; `arch` is dropped
 from the name when unknown, `xapk` when the variant is a bundle).
 
 The **package id** (`org.mozilla.firefox`) is the only cross-provider identifier.

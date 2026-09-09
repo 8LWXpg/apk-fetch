@@ -4,7 +4,7 @@
 
 mod parse;
 
-use provider::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
+use contract::{AppResult, DownloadTarget, Provider, ProviderError, VersionInfo};
 use fetch::{Fetcher, HttpFetcher};
 use async_trait::async_trait;
 
@@ -131,7 +131,7 @@ impl Provider for ApkCombo {
         let ext = if variant.kind.eq_ignore_ascii_case("XAPK") { "xapk" } else { "apk" };
         let variant_arch = variant.arch.first().cloned();
         Ok(DownloadTarget {
-            filename: provider::download_filename(
+            filename: contract::download_filename(
                 pkg,
                 &resolved_version,
                 variant_arch.as_deref(),

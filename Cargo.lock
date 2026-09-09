@@ -81,9 +81,9 @@ dependencies = [
  "apkpure",
  "clap",
  "colored",
+ "contract",
  "fetch",
  "indicatif",
- "provider",
  "serde",
  "serde_json",
  "tokio",
@@ -95,8 +95,8 @@ name = "apkcombo"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "contract",
  "fetch",
- "provider",
  "scraper",
 ]
 
@@ -105,8 +105,8 @@ name = "apkmirror"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "contract",
  "fetch",
- "provider",
  "scraper",
 ]
 
@@ -115,8 +115,8 @@ name = "apkpure"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "contract",
  "fetch",
- "provider",
  "scraper",
 ]
 
@@ -231,6 +231,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "contract"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "colored",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "cssparser"
 version = "0.31.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -306,7 +316,7 @@ name = "fetch"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "provider",
+ "contract",
  "tokio",
 ]
 
@@ -670,16 +680,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "provider"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "colored",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -998,8 +998,8 @@ name = "uptodown"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "contract",
  "fetch",
- "provider",
  "scraper",
  "serde_json",
 ]

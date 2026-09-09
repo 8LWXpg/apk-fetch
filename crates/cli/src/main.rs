@@ -6,7 +6,7 @@ mod commands;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use apk_fetch::core::{ProviderRegistry, error};
+use apk_fetch::contract::{ProviderRegistry, error};
 use apk_fetch::providers::{
     apkcombo::ApkCombo, apkmirror::ApkMirror, apkpure::ApkPure, uptodown::Uptodown,
 };
