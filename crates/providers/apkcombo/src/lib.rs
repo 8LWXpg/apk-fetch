@@ -62,7 +62,7 @@ impl Default for ApkCombo {
 
 #[async_trait]
 impl Provider for ApkCombo {
-	fn name(&self) -> ProviderId {
+	fn id(&self) -> ProviderId {
 		NAME
 	}
 
@@ -144,19 +144,8 @@ impl Provider for ApkCombo {
 		} else {
 			parse::version_token(&variant.version)
 		};
-		let ext = if variant.kind.eq_ignore_ascii_case("XAPK") {
-			"xapk"
-		} else {
-			"apk"
-		};
 		let variant_arch = variant.arch.first().cloned();
 		Ok(DownloadTarget {
-			filename: contract::download_filename(
-				pkg,
-				&resolved_version,
-				variant_arch.as_deref(),
-				ext,
-			),
 			url,
 			version: Some(resolved_version),
 			arch: variant_arch,

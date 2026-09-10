@@ -14,9 +14,6 @@ pub enum ProviderId {
 }
 
 impl ProviderId {
-	/// Fallback order for `get`, and the single provider `search` / `versions`
-	/// use when none is named. (`ProviderId::value_variants()` from `ValueEnum`
-	/// gives the full set if you need it.)
 	pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
 		ProviderId::Apkcombo,
 		ProviderId::Apkpure,
@@ -65,7 +62,6 @@ pub struct VersionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadTarget {
 	pub url: String,
-	pub filename: String,
 	pub version: Option<String>,
 	/// Architecture of the resolved variant (e.g. `arm64-v8a`, `universal`).
 	pub arch: Option<String>,
@@ -100,15 +96,24 @@ pub struct ProviderFailure {
 	pub source: ProviderError,
 }
 
-/// `{pkg}-{version}-{arch}.{ext}`, sanitised for a filesystem. `arch` is dropped
-/// from the name when unknown. `ext` is `"apk"` or `"xapk"`.
-pub fn download_filename(pkg: &str, version: &str, arch: Option<&str>, ext: &str) -> String {
+impl ProviderError {
+	/// Attributes this failure to the provider that raised it.
+	pub fn by(self, provider: ProviderId) -> ProviderFailure {
+		ProviderFailure {
+			provider,
+			source: self,
+		}
+	}
+}
+
+/// `{pkg}-{version}-{arch}`, sanitised for a filesystem. `arch` is dropped when
+/// unknown. No extension: the fetcher appends whatever the site actually serves.
+pub fn download_filename(pkg: &str, version: &str, arch: Option<&str>) -> String {
 	let stem = match arch {
 		Some(a) if !a.is_empty() => format!("{pkg}-{version}-{a}"),
 		_ => format!("{pkg}-{version}"),
 	};
-	let cleaned: String = stem
-		.chars()
+	stem.chars()
 		.map(|c| {
 			if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
 				c
@@ -116,13 +121,12 @@ pub fn download_filename(pkg: &str, version: &str, arch: Option<&str>, ext: &str
 				'_'
 			}
 		})
-		.collect();
-	format!("{cleaned}.{ext}")
+		.collect()
 }
 
 #[async_trait]
 pub trait Provider: Send + Sync {
-	fn name(&self) -> ProviderId;
+	fn id(&self) -> ProviderId;
 	async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
 	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
 	/// Resolve a download. `arch` is an ABI preference (e.g. `arm64-v8a`); a
@@ -133,7 +137,6 @@ pub trait Provider: Send + Sync {
 		version: Option<&str>,
 		arch: &str,
 	) -> Result<DownloadTarget, ProviderError>;
-
 	/// Lightweight reachability probe for `providers check`. Default: a canned
 	/// search. Override if a provider has a cheaper health endpoint.
 	async fn check(&self) -> Result<(), ProviderError> {
@@ -145,31 +148,6 @@ pub trait Provider: Send + Sync {
 pub struct ResolveError {
 	pub pkg: String,
 	pub attempts: Vec<ProviderFailure>,
-}
-
-impl ResolveError {
-	/// True if every attempt was a block / rate-limit (distinct exit code).
-	pub fn all_blocked(&self) -> bool {
-		!self.attempts.is_empty()
-			&& self
-				.attempts
-				.iter()
-				.all(|f| matches!(f.source, ProviderError::Blocked))
-	}
-
-	pub fn all_not_found(&self) -> bool {
-		!self.attempts.is_empty()
-			&& self
-				.attempts
-				.iter()
-				.all(|f| matches!(f.source, ProviderError::NotFound(_)))
-	}
-
-	pub fn any_network(&self) -> bool {
-		self.attempts
-			.iter()
-			.any(|f| matches!(f.source, ProviderError::Network(_)))
-	}
 }
 
 impl std::fmt::Display for ResolveError {
@@ -184,9 +162,7 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-/// Holds configured providers and drives priority-ordered fallback. Every call
-/// through the registry tags failures with the [`ProviderId`], so callers get a
-/// [`ProviderFailure`], never a bare [`ProviderError`].
+/// Holds configured providers **in priority order**
 #[derive(Default)]
 pub struct ProviderRegistry {
 	providers: Vec<Box<dyn Provider>>,
@@ -197,33 +173,22 @@ impl ProviderRegistry {
 		Self::default()
 	}
 
+	/// Appends one provider.
 	pub fn register(&mut self, provider: Box<dyn Provider>) {
 		self.providers.push(provider);
 	}
 
 	pub fn names(&self) -> Vec<ProviderId> {
-		self.providers.iter().map(|p| p.name()).collect()
+		self.providers.iter().map(|p| p.id()).collect()
 	}
 
-	pub fn get(&self, id: ProviderId) -> Option<&dyn Provider> {
+	#[track_caller]
+	fn require(&self, id: ProviderId) -> &dyn Provider {
 		self.providers
 			.iter()
-			.find(|p| p.name() == id)
-			.map(|b| b.as_ref())
-	}
-
-	fn tag<T>(id: ProviderId, r: Result<T, ProviderError>) -> Result<T, ProviderFailure> {
-		r.map_err(|source| ProviderFailure {
-			provider: id,
-			source,
-		})
-	}
-
-	/// Every `ProviderId` is registered by `build_registry`, and the CLI only ever
-	/// passes ids parsed from the enum — so a lookup miss is a programming error.
-	fn require(&self, id: ProviderId) -> &dyn Provider {
-		self.get(id)
+			.find(|p| p.id() == id)
 			.unwrap_or_else(|| panic!("provider {id} not registered"))
+			.as_ref()
 	}
 
 	pub async fn search(
@@ -231,7 +196,7 @@ impl ProviderRegistry {
 		id: ProviderId,
 		query: &str,
 	) -> Result<Vec<AppResult>, ProviderFailure> {
-		Self::tag(id, self.require(id).search(query).await)
+		self.require(id).search(query).await.map_err(|e| e.by(id))
 	}
 
 	pub async fn versions(
@@ -239,7 +204,7 @@ impl ProviderRegistry {
 		id: ProviderId,
 		pkg: &str,
 	) -> Result<Vec<VersionInfo>, ProviderFailure> {
-		Self::tag(id, self.require(id).versions(pkg).await)
+		self.require(id).versions(pkg).await.map_err(|e| e.by(id))
 	}
 
 	pub async fn download_url(
@@ -249,22 +214,25 @@ impl ProviderRegistry {
 		version: Option<&str>,
 		arch: &str,
 	) -> Result<DownloadTarget, ProviderFailure> {
-		Self::tag(id, self.require(id).download_url(pkg, version, arch).await)
+		self.require(id)
+			.download_url(pkg, version, arch)
+			.await
+			.map_err(|e| e.by(id))
 	}
 
 	pub async fn check(&self, id: ProviderId) -> Result<(), ProviderFailure> {
-		Self::tag(id, self.require(id).check().await)
+		self.require(id).check().await.map_err(|e| e.by(id))
 	}
 
+	/// Tries every provider in priority order, returning the first success.
 	pub async fn resolve_with_fallback(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
 		arch: &str,
-		order: &[ProviderId],
 	) -> Result<DownloadTarget, ResolveError> {
 		let mut attempts = Vec::new();
-		for &id in order {
+		for id in self.names() {
 			match self.download_url(id, pkg, version, arch).await {
 				Ok(target) => return Ok(target),
 				Err(f) => attempts.push(f),
@@ -284,17 +252,17 @@ mod tests {
 	#[test]
 	fn filename_shape() {
 		assert_eq!(
-			download_filename("org.mozilla.firefox", "155.0.1", Some("arm64-v8a"), "apk"),
-			"org.mozilla.firefox-155.0.1-arm64-v8a.apk"
+			download_filename("org.mozilla.firefox", "155.0.1", Some("arm64-v8a")),
+			"org.mozilla.firefox-155.0.1-arm64-v8a"
 		);
 		assert_eq!(
-			download_filename("org.mozilla.firefox", "155.0.1", None, "xapk"),
-			"org.mozilla.firefox-155.0.1.xapk"
+			download_filename("org.mozilla.firefox", "155.0.1", None),
+			"org.mozilla.firefox-155.0.1"
 		);
 		// path separators from a slug-style id get scrubbed
 		assert_eq!(
-			download_filename("mozilla/firefox", "1.0", Some("universal"), "apk"),
-			"mozilla_firefox-1.0-universal.apk"
+			download_filename("mozilla/firefox", "1.0", Some("universal")),
+			"mozilla_firefox-1.0-universal"
 		);
 	}
 }

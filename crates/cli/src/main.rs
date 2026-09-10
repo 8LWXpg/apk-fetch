@@ -3,7 +3,9 @@ mod commands;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use apk_fetch::contract::{ProviderId, ProviderRegistry, error};
+use apk_fetch::contract::{
+	ProviderError, ProviderFailure, ProviderId, ProviderRegistry, ResolveError, error,
+};
 use apk_fetch::providers::{apkcombo::ApkCombo, apkmirror::ApkMirror, apkpure::ApkPure};
 use clap::builder::styling;
 use clap::{Parser, Subcommand};
@@ -21,11 +23,52 @@ pub struct AppError {
 	pub source: anyhow::Error,
 }
 
-impl<E: Into<anyhow::Error>> From<E> for AppError {
-	fn from(e: E) -> Self {
+impl From<serde_json::Error> for AppError {
+	fn from(e: serde_json::Error) -> Self {
 		Self {
 			code: EXIT_GENERIC,
 			source: e.into(),
+		}
+	}
+}
+
+/// Exit code for one provider's failure.
+fn provider_error_code(e: &ProviderError) -> u8 {
+	match e {
+		ProviderError::NotFound(_) => EXIT_NOT_FOUND,
+		ProviderError::Blocked => EXIT_BLOCKED,
+		ProviderError::Network(_) => EXIT_NETWORK,
+		ProviderError::Cancelled => EXIT_CANCELLED,
+		ProviderError::ParseError(_) => EXIT_GENERIC,
+	}
+}
+
+impl From<ProviderFailure> for AppError {
+	fn from(f: ProviderFailure) -> Self {
+		Self {
+			code: provider_error_code(&f.source),
+			source: anyhow::anyhow!("{f}"),
+		}
+	}
+}
+
+impl From<ResolveError> for AppError {
+	fn from(e: ResolveError) -> Self {
+		// If every provider failed the same way, that's the reason; otherwise a
+		// network failure is the one the user can act on.
+		let codes: Vec<u8> = e
+			.attempts
+			.iter()
+			.map(|f| provider_error_code(&f.source))
+			.collect();
+		let code = match codes.first() {
+			Some(&c) if codes.iter().all(|&x| x == c) => c,
+			_ if codes.contains(&EXIT_NETWORK) => EXIT_NETWORK,
+			_ => EXIT_GENERIC,
+		};
+		Self {
+			code,
+			source: anyhow::anyhow!("{e}"),
 		}
 	}
 }
@@ -72,10 +115,11 @@ enum Command {
 		#[arg(long)]
 		version: Option<String>,
 		/// Use only this provider (skips the priority-ordered fallback).
-		#[arg(long)]
+		#[arg(long, conflicts_with = "priority")]
 		provider: Option<ProviderId>,
-		/// Providers to try, in order, until one resolves (comma-separated or repeated).
-		#[arg(long, value_delimiter = ',', default_values_t = ProviderId::DEFAULT_PRIORITY.to_vec())]
+		/// Providers to try, in order, until one resolves (comma-separated or
+		/// repeated). Default: the built-in priority order.
+		#[arg(long, value_delimiter = ',')]
 		priority: Vec<ProviderId>,
 		/// Preferred ABI; providers fall back to a universal build if unavailable.
 		#[arg(long, default_value = "arm64-v8a")]
@@ -95,20 +139,29 @@ enum Command {
 enum ProvidersCmd {
 	/// List configured providers and their priority.
 	List,
-	/// Probe provider reachability.
+	/// Check provider reachability.
 	Check { name: Option<ProviderId> },
 }
 
-fn build_registry() -> ProviderRegistry {
+fn build_registry(order: &[ProviderId]) -> ProviderRegistry {
 	let mut registry = ProviderRegistry::new();
-	registry.register(Box::new(ApkMirror::new()));
-	registry.register(Box::new(ApkPure::new()));
-	registry.register(Box::new(ApkCombo::new()));
+	for &id in order {
+		registry.register(match id {
+			ProviderId::Apkmirror => Box::new(ApkMirror::new()),
+			ProviderId::Apkpure => Box::new(ApkPure::new()),
+			ProviderId::Apkcombo => Box::new(ApkCombo::new()),
+		});
+	}
 	registry
 }
 
 async fn dispatch(cli: Cli) -> Result<(), AppError> {
-	let registry = build_registry();
+	let order: &[ProviderId] = match &cli.command {
+		Command::Get { priority, .. } if !priority.is_empty() => priority,
+		_ => ProviderId::DEFAULT_PRIORITY,
+	};
+	let registry = build_registry(order);
+
 	match cli.command {
 		Command::Search {
 			query,
@@ -123,16 +176,15 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
 			package_id,
 			version,
 			provider,
-			priority,
 			arch,
 			output,
+			..
 		} => {
 			commands::get(
 				&registry,
 				&package_id,
 				version.as_deref(),
 				provider,
-				&priority,
 				&arch,
 				&output,
 				cli.json,

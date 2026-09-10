@@ -23,6 +23,9 @@ pub const RETRY_BASE_BACKOFF: Duration = Duration::from_millis(500);
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
     (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+/// Marks curl's `-w` line in stdout, past the header dump `-D -` writes there.
+const META_SENTINEL: &str = "\u{1f}apk-fetch\u{1f}";
+
 /// Cloudflare / anti-bot challenge fingerprints in a response body.
 const BLOCK_SIGNATURES: &[&str] = &[
 	"Just a moment...",
@@ -42,42 +45,66 @@ fn looks_blocked(body: &str) -> bool {
 	BLOCK_SIGNATURES.iter().any(|sig| body.contains(sig))
 }
 
-/// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
-/// `PK\x05\x06`. An empty or missing file fails the check.
-fn package_ext_from(content_type: &str, url: &str) -> Option<&'static str> {
+/// Extension from the last `Content-Disposition` filename in a header dump — the
+/// name a browser would save this download under. A server (or a hijacked mirror)
+/// chooses that string, so only a short alphanumeric suffix is accepted.
+fn ext_from_disposition(headers: &str) -> Option<String> {
+	let ext = headers
+		.lines()
+		.filter(|l| {
+			l.get(..20)
+				.is_some_and(|p| p.eq_ignore_ascii_case("content-disposition:"))
+		})
+		.filter_map(|l| {
+			// `filename="x.apk"`, or RFC 5987 `filename*=UTF-8\x.apk`.
+			let v = l.split_once("filename")?.1.trim_start_matches(['*', '=']);
+			let v = v.rsplit("''").next()?.trim().trim_matches('"');
+			v.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase())
+		})
+		.next_back()?;
+	(ext.len() <= 8 && ext.chars().all(|c| c.is_ascii_alphanumeric())).then_some(ext)
+}
+
+/// The other two things the site tells us, in descending trustworthiness.
+fn ext_from_type_or_url(content_type: &str, url: &str) -> Option<String> {
 	let ct = content_type.to_ascii_lowercase();
 	if ct.contains("xapk") {
-		return Some("xapk");
+		return Some("xapk".to_string());
 	}
 	if ct.contains("vnd.android.package-archive") {
-		return Some("apk");
+		return Some("apk".to_string());
 	}
 	let hay = url.to_ascii_lowercase();
 	["xapk", "apkm", "apks", "apk"]
 		.into_iter()
 		.find(|ext| hay.contains(&format!(".{ext}?")) || hay.ends_with(&format!(".{ext}")))
+		.map(str::to_string)
 }
 
-/// Renames file extension if the server's content-type / final URL indicates a
-/// different package type than `dest`'s extension. Returns the path actually on disk.
-async fn rename_to_real_ext(
+/// Appends the extension the site served — `Content-Disposition` first, then
+/// content-type, then the final URL. `dest` arrives without one, and the stem is
+/// full of dots (version numbers), so this appends instead of replacing. Nothing
+/// recognisable leaves the bare name. Returns the path on disk.
+async fn add_served_ext(
 	dest: &Path,
+	headers: &str,
 	content_type: &str,
 	final_url: &str,
 ) -> Result<std::path::PathBuf, ProviderError> {
-	let Some(real) = package_ext_from(content_type, final_url) else {
+	let Some(ext) =
+		ext_from_disposition(headers).or_else(|| ext_from_type_or_url(content_type, final_url))
+	else {
 		return Ok(dest.to_path_buf());
 	};
-	if dest.extension().and_then(|e| e.to_str()) == Some(real) {
-		return Ok(dest.to_path_buf());
-	}
-	let target = dest.with_extension(real);
+	let target = std::path::PathBuf::from(format!("{}.{ext}", dest.display()));
 	tokio::fs::rename(dest, &target)
 		.await
 		.map_err(network_err)?;
 	Ok(target)
 }
 
+/// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
+/// `PK\x05\x06`. An empty or missing file fails the check.
 async fn starts_with_zip_magic(path: &std::path::Path) -> bool {
 	use tokio::io::AsyncReadExt;
 	let Ok(mut f) = tokio::fs::File::open(path).await else {
@@ -297,8 +324,12 @@ impl HttpFetcher {
 			.args(["--fail", "--retry", &MAX_RETRIES.to_string()])
 			.arg("-o")
 			.arg(dest)
+			.arg("-D")
+			.arg("-")
 			.arg("-w")
-			.arg("%{content_type}\t%{url_effective}")
+			.arg(format!(
+				"\n{META_SENTINEL}%{{content_type}}\t%{{url_effective}}"
+			))
 			.stdout(Stdio::piped())
 			.stderr(Stdio::inherit())
 			.spawn()
@@ -345,10 +376,12 @@ impl HttpFetcher {
 				"downloaded file is not an APK (server returned a non-package response)",
 			));
 		}
-		let (ct, final_url) = stdout_buf
-			.split_once('\t')
+		// stdout holds every redirect's headers, then the `-w` line last.
+		let (headers, meta) = stdout_buf
+			.rsplit_once(META_SENTINEL)
 			.unwrap_or((stdout_buf.as_str(), ""));
-		rename_to_real_ext(dest, ct, final_url).await
+		let (ct, final_url) = meta.split_once('\t').unwrap_or((meta, ""));
+		add_served_ext(dest, headers, ct, final_url).await
 	}
 }
 
@@ -385,24 +418,6 @@ mod tests {
 	}
 
 	#[test]
-	fn ext_from_content_type_and_url() {
-		assert_eq!(
-			package_ext_from("application/vnd.android.package-archive", ""),
-			Some("apk")
-		);
-		assert_eq!(
-			package_ext_from("application/xapk-package-archive", ""),
-			Some("xapk")
-		);
-		// content-type unhelpful -> fall back to the URL
-		assert_eq!(
-			package_ext_from("application/octet-stream", "https://x/y_APKPure.xapk?k=1"),
-			Some("xapk")
-		);
-		assert_eq!(package_ext_from("text/html", "https://x/y"), None);
-	}
-
-	#[test]
 	fn status_mapping() {
 		let u = "https://x/y";
 		assert!(matches!(
@@ -418,5 +433,57 @@ mod tests {
 			Some(ProviderError::NotFound(_))
 		));
 		assert!(map_http_status(200, u).is_none());
+	}
+
+	#[test]
+	fn disposition_wins_and_takes_the_last_redirect() {
+		// What `curl -D -` writes: one header block per hop, CRLF-terminated.
+		let headers = [
+			"HTTP/1.1 302 Found",
+			"Content-Disposition: attachment; filename=\"first\".apk\"",
+			"",
+			"HTTP/1.1 200 OK",
+			"Content-Type: application/octet-stream",
+			"Content-Disposition: attachment; filename=\"yt_21.35.448_apkmirror.com\".apkm\"",
+			"",
+		]
+		.join("\r\n");
+		assert_eq!(ext_from_disposition(&headers).as_deref(), Some("apkm"));
+	}
+
+	#[test]
+	fn disposition_rfc5987_and_junk() {
+		assert_eq!(
+			ext_from_disposition("Content-Disposition: attachment; filename*=UTF-8''app.xapk")
+				.as_deref(),
+			Some("xapk")
+		);
+		// A hostile name can't smuggle a path or a long suffix through.
+		assert_eq!(
+			ext_from_disposition("content-disposition: attachment; filename=\"x./../etc/passwd\""),
+			None
+		);
+		assert_eq!(ext_from_disposition("Content-Type: text/html"), None);
+	}
+
+	#[test]
+	fn falls_back_to_type_then_url() {
+		assert_eq!(
+			ext_from_type_or_url("application/vnd.android.package-archive", "").as_deref(),
+			Some("apk")
+		);
+		assert_eq!(
+			ext_from_type_or_url("application/octet-stream", "https://cdn/x.apkm?token=1")
+				.as_deref(),
+			Some("apkm")
+		);
+		// download.php?id=&key= tells us nothing — the file keeps its bare name.
+		assert_eq!(
+			ext_from_type_or_url(
+				"application/octet-stream",
+				"https://a/download.php?id=1&key=z"
+			),
+			None
+		);
 	}
 }

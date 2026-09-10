@@ -2,53 +2,18 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use apk_fetch::contract::{
-	AppResult, ProviderError, ProviderFailure, ProviderId, ProviderRegistry, ResolveError, error,
-	info, success, warn,
+	AppResult, ProviderError, ProviderId, ProviderRegistry, error, info, success, warn,
 };
 use apk_fetch::fetch::HttpFetcher;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{AppError, EXIT_BLOCKED, EXIT_NETWORK, EXIT_NOT_FOUND};
+use crate::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
 const DEFAULT_PROVIDER: ProviderId = ProviderId::DEFAULT_PRIORITY[0];
 
-fn provider_error_code(e: &ProviderError) -> u8 {
-	match e {
-		ProviderError::NotFound(_) => EXIT_NOT_FOUND,
-		ProviderError::Blocked => EXIT_BLOCKED,
-		ProviderError::Network(_) => EXIT_NETWORK,
-		ProviderError::Cancelled => crate::EXIT_CANCELLED,
-		ProviderError::ParseError(_) => crate::EXIT_GENERIC,
-	}
-}
-
-fn provider_fail(f: ProviderFailure) -> AppError {
-	AppError {
-		code: provider_error_code(&f.source),
-		source: anyhow!("{f}"),
-	}
-}
-
-fn resolve_err(e: ResolveError) -> AppError {
-	let code = if e.all_not_found() {
-		EXIT_NOT_FOUND
-	} else if e.all_blocked() {
-		EXIT_BLOCKED
-	} else if e.any_network() {
-		EXIT_NETWORK
-	} else {
-		crate::EXIT_GENERIC
-	};
-	AppError {
-		code,
-		source: anyhow!("{e}"),
-	}
-}
-
 fn render_results(provider: ProviderId, results: &[AppResult]) {
-	// Pad `s` to `w` terminal columns, then colour — `{:<w$}` counts chars, which
-	// is wrong for CJK / wide glyphs, so measure with unicode-width instead.
+	// Pad `s` to `w` terminal columns, then color.
 	let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
 
 	println!("{}", provider.as_str().cyan().bold());
@@ -72,7 +37,6 @@ fn render_results(provider: ProviderId, results: &[AppResult]) {
 	}
 }
 
-/// This is discovery, not download failover — don't stop at the first result.
 pub async fn search(
 	registry: &ProviderRegistry,
 	query: &str,
@@ -113,7 +77,7 @@ pub async fn search(
 				if !json {
 					warn!("{f}");
 				}
-				last = Some(provider_fail(f));
+				last = Some(f.into());
 			}
 		}
 	}
@@ -138,7 +102,7 @@ pub async fn versions(
 	json: bool,
 ) -> Result<(), AppError> {
 	let id = provider.unwrap_or(DEFAULT_PROVIDER);
-	let list = registry.versions(id, pkg).await.map_err(provider_fail)?;
+	let list = registry.versions(id, pkg).await?;
 	if json {
 		println!("{}", serde_json::to_string_pretty(&list)?);
 	} else {
@@ -149,37 +113,34 @@ pub async fn versions(
 	Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn get(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	version: Option<&str>,
 	provider: Option<ProviderId>,
-	priority: &[ProviderId],
 	arch: &str,
 	output: &Path,
 	json: bool,
 ) -> Result<(), AppError> {
 	let target = if let Some(id) = provider {
 		info!("resolving {} via {}...", pkg, id);
-		registry
-			.download_url(id, pkg, version, arch)
-			.await
-			.map_err(provider_fail)?
+		registry.download_url(id, pkg, version, arch).await?
 	} else {
-		let order: Vec<&str> = priority.iter().map(|p| p.as_str()).collect();
+		let names = registry.names();
+		let order: Vec<&str> = names.iter().map(|p| p.as_str()).collect();
 		info!("resolving {} ({})...", pkg, order.join(" -> "));
-		registry
-			.resolve_with_fallback(pkg, version, arch, priority)
-			.await
-			.map_err(resolve_err)?
+		registry.resolve_with_fallback(pkg, version, arch).await?
 	};
 
 	std::fs::create_dir_all(output).map_err(|e| AppError {
 		code: EXIT_NETWORK,
 		source: anyhow!("{e}"),
 	})?;
-	let dest = output.join(&target.filename);
+	let dest = output.join(apk_fetch::contract::download_filename(
+		pkg,
+		target.version.as_deref().unwrap_or("latest"),
+		target.arch.as_deref(),
+	));
 
 	info!("downloading from {} ({})", target.provider, target.url);
 	let fetcher = HttpFetcher::new();
@@ -187,7 +148,7 @@ pub async fn get(
 		.download_to_file(&target.url, &target.headers, &dest)
 		.await
 		.map_err(|e| AppError {
-			code: provider_error_code(&e),
+			code: crate::provider_error_code(&e),
 			// A cancel isn't a failure — don't dress it up as one.
 			source: match e {
 				ProviderError::Cancelled => anyhow!("cancelled"),
@@ -212,27 +173,18 @@ pub async fn get(
 }
 
 pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
-	let default = ProviderId::DEFAULT_PRIORITY;
-	let rank = |id: &ProviderId| default.iter().position(|d| d == id).map(|i| i + 1);
 	let names = registry.names();
 	if json {
 		let rows: Vec<_> = names
 			.iter()
-			.map(|n| serde_json::json!({ "name": n, "priority": rank(n) }))
+			.enumerate()
+			.map(|(i, n)| serde_json::json!({ "name": n, "priority": i + 1 }))
 			.collect();
 		println!("{}", serde_json::to_string_pretty(&rows)?);
 		return Ok(());
 	}
-	for name in &names {
-		match rank(name) {
-			Some(i) => apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i),
-			None => apk_fetch::contract::print_message!(
-				"•",
-				cyan,
-				"{}  (not in default priority)",
-				name
-			),
-		}
+	for (i, name) in names.iter().enumerate() {
+		apk_fetch::contract::print_message!("•", cyan, "{}  (priority {})", name, i + 1);
 	}
 	Ok(())
 }
@@ -261,7 +213,7 @@ pub async fn providers_check(
 				if !json {
 					error!("{f}");
 				}
-				worst = Some(provider_fail(f));
+				worst = Some(f.into());
 			}
 		}
 	}
