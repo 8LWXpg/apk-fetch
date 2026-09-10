@@ -152,6 +152,10 @@ pub struct ResolveError {
 
 impl std::fmt::Display for ResolveError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// Only one provider was asked; naming a list of one reads as noise.
+		if let [only] = self.attempts.as_slice() {
+			return write!(f, "{only}");
+		}
 		write!(f, "all providers failed for '{}':", self.pkg)?;
 		for attempt in &self.attempts {
 			write!(f, "\n  - {attempt}")?;
@@ -176,6 +180,12 @@ impl ProviderRegistry {
 	/// Appends one provider.
 	pub fn register(&mut self, provider: Box<dyn Provider>) {
 		self.providers.push(provider);
+	}
+
+	/// The highest-priority provider. The registry is never empty: it is built
+	/// from a non-empty selection.
+	pub fn top(&self) -> ProviderId {
+		self.names()[0]
 	}
 
 	pub fn names(&self) -> Vec<ProviderId> {
@@ -242,6 +252,12 @@ impl ProviderRegistry {
 			pkg: pkg.to_string(),
 			attempts,
 		})
+	}
+}
+
+impl From<Vec<Box<dyn Provider>>> for ProviderRegistry {
+	fn from(value: Vec<Box<dyn Provider>>) -> Self {
+		Self { providers: value }
 	}
 }
 

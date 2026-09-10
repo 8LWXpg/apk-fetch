@@ -10,8 +10,6 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
-const DEFAULT_PROVIDER: ProviderId = ProviderId::DEFAULT_PRIORITY[0];
-
 fn render_results(provider: ProviderId, results: &[AppResult]) {
 	// Pad `s` to `w` terminal columns, then color.
 	let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
@@ -37,25 +35,11 @@ fn render_results(provider: ProviderId, results: &[AppResult]) {
 	}
 }
 
-pub async fn search(
-	registry: &ProviderRegistry,
-	query: &str,
-	providers: &[ProviderId],
-	all: bool,
-	json: bool,
-) -> Result<(), AppError> {
-	let targets: Vec<ProviderId> = if all {
-		registry.names()
-	} else if providers.is_empty() {
-		vec![DEFAULT_PROVIDER]
-	} else {
-		providers.to_vec()
-	};
-
+pub async fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Result<(), AppError> {
 	let mut merged: Vec<AppResult> = Vec::new();
 	let mut hit = false;
 	let mut last: Option<AppError> = None;
-	for id in targets {
+	for id in registry.names() {
 		if !json {
 			info!("searching {}...", id);
 		}
@@ -95,13 +79,8 @@ pub async fn search(
 	}
 }
 
-pub async fn versions(
-	registry: &ProviderRegistry,
-	pkg: &str,
-	provider: Option<ProviderId>,
-	json: bool,
-) -> Result<(), AppError> {
-	let id = provider.unwrap_or(DEFAULT_PROVIDER);
+pub async fn versions(registry: &ProviderRegistry, pkg: &str, json: bool) -> Result<(), AppError> {
+	let id = registry.top();
 	let list = registry.versions(id, pkg).await?;
 	if json {
 		println!("{}", serde_json::to_string_pretty(&list)?);
@@ -117,20 +96,14 @@ pub async fn get(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	version: Option<&str>,
-	provider: Option<ProviderId>,
 	arch: &str,
 	output: &Path,
 	json: bool,
 ) -> Result<(), AppError> {
-	let target = if let Some(id) = provider {
-		info!("resolving {} via {}...", pkg, id);
-		registry.download_url(id, pkg, version, arch).await?
-	} else {
-		let names = registry.names();
-		let order: Vec<&str> = names.iter().map(|p| p.as_str()).collect();
-		info!("resolving {} ({})...", pkg, order.join(" -> "));
-		registry.resolve_with_fallback(pkg, version, arch).await?
-	};
+	let names = registry.names();
+	let order: Vec<&str> = names.iter().map(|p| p.as_str()).collect();
+	info!("resolving {} ({})...", pkg, order.join(" -> "));
+	let target = registry.resolve_with_fallback(pkg, version, arch).await?;
 
 	std::fs::create_dir_all(output).map_err(|e| AppError {
 		code: EXIT_NETWORK,
@@ -189,15 +162,8 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
 	Ok(())
 }
 
-pub async fn providers_check(
-	registry: &ProviderRegistry,
-	name: Option<ProviderId>,
-	json: bool,
-) -> Result<(), AppError> {
-	let targets: Vec<ProviderId> = match name {
-		Some(n) => vec![n],
-		None => registry.names(),
-	};
+pub async fn providers_check(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
+	let targets = registry.names();
 	let mut results = Vec::new();
 	let mut worst: Option<AppError> = None;
 	for id in targets {
@@ -225,8 +191,8 @@ pub async fn providers_check(
 		println!("{}", serde_json::to_string_pretty(&rows)?);
 	}
 	// Only fail the process when a single named provider was checked and failed.
-	match (name, worst) {
-		(Some(_), Some(e)) => Err(e),
+	match worst {
+		Some(e) if results.len() == 1 => Err(e),
 		_ => Ok(()),
 	}
 }

@@ -9,6 +9,7 @@ use apk_fetch::contract::{
 use apk_fetch::providers::{apkcombo::ApkCombo, apkmirror::ApkMirror, apkpure::ApkPure};
 use clap::builder::styling;
 use clap::{Parser, Subcommand};
+use contract::Provider;
 
 pub const EXIT_GENERIC: u8 = 1;
 pub const EXIT_NOT_FOUND: u8 = 3;
@@ -143,39 +144,52 @@ enum ProvidersCmd {
 	Check { name: Option<ProviderId> },
 }
 
+/// Build [`ProviderRegistry`] in struct `impl` would cause circular import.
 fn build_registry(order: &[ProviderId]) -> ProviderRegistry {
-	let mut registry = ProviderRegistry::new();
-	for &id in order {
-		registry.register(match id {
-			ProviderId::Apkmirror => Box::new(ApkMirror::new()),
-			ProviderId::Apkpure => Box::new(ApkPure::new()),
-			ProviderId::Apkcombo => Box::new(ApkCombo::new()),
-		});
+	order
+		.iter()
+		.map(|id| -> Box<dyn Provider> {
+			match id {
+				ProviderId::Apkmirror => Box::new(ApkMirror::new()),
+				ProviderId::Apkpure => Box::new(ApkPure::new()),
+				ProviderId::Apkcombo => Box::new(ApkCombo::new()),
+			}
+		})
+		.collect::<Vec<_>>()
+		.into()
+}
+
+/// Which providers this invocation may use, in order.
+fn selection(cmd: &Command) -> Vec<ProviderId> {
+	let all = || ProviderId::DEFAULT_PRIORITY.to_vec();
+	let top = || vec![ProviderId::DEFAULT_PRIORITY[0]];
+	match cmd {
+		Command::Search { all: true, .. } => all(),
+		Command::Search { provider, .. } if provider.is_empty() => top(),
+		Command::Search { provider, .. } => provider.clone(),
+		Command::Versions { provider, .. } => provider.map_or_else(top, |p| vec![p]),
+		Command::Get {
+			provider: Some(p), ..
+		} => vec![*p],
+		Command::Get { priority, .. } if !priority.is_empty() => priority.clone(),
+		Command::Providers {
+			cmd: ProvidersCmd::Check { name: Some(n) },
+		} => vec![*n],
+		_ => all(),
 	}
-	registry
 }
 
 async fn dispatch(cli: Cli) -> Result<(), AppError> {
-	let order: &[ProviderId] = match &cli.command {
-		Command::Get { priority, .. } if !priority.is_empty() => priority,
-		_ => ProviderId::DEFAULT_PRIORITY,
-	};
-	let registry = build_registry(order);
+	let registry = build_registry(&selection(&cli.command));
 
 	match cli.command {
-		Command::Search {
-			query,
-			provider,
-			all,
-		} => commands::search(&registry, &query, &provider, all, cli.json).await,
-		Command::Versions {
-			package_id,
-			provider,
-		} => commands::versions(&registry, &package_id, provider, cli.json).await,
+		Command::Search { query, .. } => commands::search(&registry, &query, cli.json).await,
+		Command::Versions { package_id, .. } => {
+			commands::versions(&registry, &package_id, cli.json).await
+		}
 		Command::Get {
 			package_id,
 			version,
-			provider,
 			arch,
 			output,
 			..
@@ -184,7 +198,6 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
 				&registry,
 				&package_id,
 				version.as_deref(),
-				provider,
 				&arch,
 				&output,
 				cli.json,
@@ -193,9 +206,7 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
 		}
 		Command::Providers { cmd } => match cmd {
 			ProvidersCmd::List => commands::providers_list(&registry, cli.json),
-			ProvidersCmd::Check { name } => {
-				commands::providers_check(&registry, name, cli.json).await
-			}
+			ProvidersCmd::Check { .. } => commands::providers_check(&registry, cli.json).await,
 		},
 	}
 }
