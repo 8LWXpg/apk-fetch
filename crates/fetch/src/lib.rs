@@ -139,15 +139,11 @@ impl HttpFetcher {
         *last = Some(Instant::now());
     }
 
-    /// `progress`: show curl's own progress bar on stderr (downloads); otherwise
-    /// stay silent (`-s`), which also suppresses the meter.
+    /// `progress`: show curl's own meter on stderr (downloads). `-s` suppresses
+    /// the meter, so showing it means dropping to a bare `-S`.
     fn base_cmd(url: &str, headers: &[(String, String)], progress: bool) -> Command {
         let mut cmd = Command::new("curl");
-        if progress {
-            cmd.args(["-S", "--progress-bar"]);
-        } else {
-            cmd.arg("-sS");
-        }
+        cmd.arg(if progress { "-S" } else { "-sS" });
         cmd.args([
             "-L",
             "--compressed",
