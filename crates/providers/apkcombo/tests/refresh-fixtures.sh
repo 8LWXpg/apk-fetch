@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-#
-# Re-fetch the APKCombo HTML fixtures that src/parse.rs tests run against.
-# Fixtures live in tests/<app>/*.html — one directory per app.
-#
-#   bash crates/providers/apkcombo/tests/refresh-fixtures.sh
-#   bash crates/providers/apkcombo/tests/refresh-fixtures.sh <app> <package-id>
-#
-# APKCombo has no Cloudflare/captcha on the download path. The variants fixture is
-# the POST /{slug}/{pkg}/{xid}/dl fragment. Tests assert on structure, not version
-# numbers. Fixtures are trimmed of <script>/<style>/<svg>.
 
 set -euo pipefail
 
@@ -17,7 +7,8 @@ BASE='https://apkcombo.com'
 TESTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 declare -A APPS=(
-  [spotify]=com.spotify.music
+  [youtube]=com.google.android.youtube
+  [youtube-music]=com.google.android.apps.youtube.music
 )
 
 TRIM='import sys,re
@@ -35,12 +26,13 @@ refresh_app() {
   echo "$app  ($pkg)"
   # APKCombo search is name-based; the dir name is the app name.
   get "$BASE/search?q=$app" | save "$app" search.html
-  # The bare app page self-links with the canonical {slug} segment.
-  get "$BASE/$pkg/" | save "$app" app.html
 
+  # Same trick the provider uses: /en/{pkg}/ 301s to the canonical /{slug}/{pkg}/,
+  # so a HEAD names the slug without downloading a page.
   local slug
-  slug=$(grep -oE "href=\"/[a-z0-9-]+/$pkg/\"" "$TESTS/$app/app.html" | head -1 | cut -d/ -f2)
-  [[ -n "$slug" ]] || { echo "  !! could not resolve slug for $pkg" >&2; return 1; }
+  slug=$(curl -fsSIL -A "$UA" -o /dev/null -w '%{url_effective}' "$BASE/en/$pkg/" \
+         | sed -nE "s#^$BASE/([^/]+)/$pkg/?\$#\1#p")
+  [[ -n "$slug" ]] || { echo "  !! apkcombo has no page for $pkg" >&2; return 1; }
 
   get "$BASE/$slug/$pkg/old-versions"                     | save "$app" old-versions.html
   get "$BASE/$slug/$pkg/download/phone-latest-apk"        | save "$app" download-page.html

@@ -9,3 +9,6 @@ contract.workspace = true
 fetch.workspace = true
 async-trait.workspace = true
 scraper.workspace = true
+
+[dev-dependencies]
+fixtures.workspace = true

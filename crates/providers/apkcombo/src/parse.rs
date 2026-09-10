@@ -1,5 +1,3 @@
-//! Pure HTML/-fragment parsers for APKCombo. Network-free for fixture tests.
-//!
 //! APKCombo download flow (no Cloudflare, no captcha on the download path):
 //!   search              -> `/{slug}/{pkg}/`
 //!   old-versions page   -> `/{slug}/{pkg}/old-versions`      (version list)
@@ -53,36 +51,21 @@ pub struct SearchHit {
     pub title: String,
 }
 
-/// The `{slug}` URL segment for `pkg`, from any `href="/{slug}/{pkg}/"` link on
-/// the bare app page `{BASE}/{pkg}/` (which self-links with the canonical slug).
-pub fn slug_from_app_page(html: &str, pkg: &str) -> Option<String> {
-    // Match `href="/{slug}/{pkg}/"`; skip the canonical `.../apkcombo.com/{pkg}/`
-    // where the "segment" before {pkg} is the host.
-    let needle = format!("/{pkg}/\"");
-    let mut from = 0;
-    while let Some(rel) = html[from..].find(&needle) {
-        let at = from + rel;
-        let slug = html[..at].rsplit('/').next().unwrap_or("");
-        if !slug.is_empty()
-            && slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-            && html[..at].ends_with(&format!("\"/{slug}"))
-        {
-            return Some(slug.to_string());
-        }
-        from = at + needle.len();
-    }
-    None
-}
+/// Locale prefix used to look a package up: `{BASE}/{LOOKUP_LOCALE}/{pkg}/` 301s
+/// to the canonical `/{slug}/{pkg}/`, which is how the slug is discovered.
+pub const LOOKUP_LOCALE: &str = "en";
 
-/// The package id a bare app page (`{BASE}/{pkg}/`) is for — its canonical URL's
-/// last segment.
-pub fn app_page_package(html: &str) -> Option<String> {
-    let doc = Html::parse_document(html);
-    let href = doc
-        .select(&sel(r#"link[rel="canonical"]"#))
-        .find_map(|e| e.value().attr("href"))?;
-    let seg = href.trim_end_matches('/').rsplit('/').next()?;
-    seg.contains('.').then(|| seg.to_string())
+/// The `{slug}` from a canonical app URL `{BASE}/{slug}/{pkg}/`. `None` when the
+/// URL isn't that shape, or is still the `{LOOKUP_LOCALE}` one we asked for —
+/// nothing redirected, so APKCombo has no page for `pkg`.
+pub fn slug_from_canonical_url(url: &str, pkg: &str) -> Option<String> {
+    let path = url.strip_prefix(BASE_URL)?.trim_matches('/');
+    match path.split('/').collect::<Vec<_>>()[..] {
+        [slug, p] if p == pkg && !slug.is_empty() && slug != LOOKUP_LOCALE => {
+            Some(slug.to_string())
+        }
+        _ => None,
+    }
 }
 
 pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
@@ -246,43 +229,37 @@ pub fn final_download_url(r2_url: &str, checkin: &str, pkg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::{Path, PathBuf};
+    use fixtures::{app_dirs, read};
 
-    fn app_dirs() -> Vec<(String, PathBuf)> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-        let mut d: Vec<(String, PathBuf)> = fs::read_dir(&root)
-            .expect("tests/ dir")
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_dir() && p.join("search.html").metadata().is_ok_and(|m| m.len() > 0))
-            .map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
-            .collect();
-        d.sort();
-        assert!(!d.is_empty(), "no tests/<app>/ dirs in {root:?}");
-        d
-    }
-    fn read(d: &Path, n: &str) -> String {
-        fs::read_to_string(d.join(n)).unwrap_or_else(|e| panic!("{}: {e}", d.join(n).display()))
+    /// `{pkg}` out of a `/{slug}/{pkg}/download/phone-{v}-apk` URL.
+    fn pkg_from_download_url(url: &str) -> Option<String> {
+        let path = url.strip_prefix(BASE_URL)?.trim_matches('/');
+        let pkg = path.split('/').nth(1)?;
+        pkg.contains('.').then(|| pkg.to_string())
     }
 
     #[test]
     fn search_and_versions_and_variants_parse() {
-        for (app, dir) in app_dirs() {
+        for (app, dir) in app_dirs(env!("CARGO_MANIFEST_DIR")) {
             let hits = parse_search(&read(&dir, "search.html"))
                 .unwrap_or_else(|e| panic!("{app}: search: {e}"));
-            assert!(hits.iter().all(|h| h.package.contains('.') && !h.title.is_empty()));
-
-            // the bare app page self-links with its {slug}
-            let app_html = read(&dir, "app.html");
-            let pkg = app_page_package(&app_html)
-                .unwrap_or_else(|| panic!("{app}: no canonical package on app page"));
-            let slug = slug_from_app_page(&app_html, &pkg)
-                .unwrap_or_else(|| panic!("{app}: no slug link for {pkg}"));
-            assert!(!slug.is_empty());
+            assert!(!hits.is_empty(), "{app}: empty hit list");
+            for h in &hits {
+                assert!(h.package.contains('.'), "{app}: bad package {:?}", h.package);
+                assert!(!h.title.trim().is_empty(), "{app}: blank title");
+            }
 
             let vers = parse_versions(&read(&dir, "old-versions.html"))
                 .unwrap_or_else(|e| panic!("{app}: versions: {e}"));
-            assert!(!vers.is_empty());
+            assert!(!vers.is_empty(), "{app}: no version rows");
+
+            // Cross-check the fixtures against each other: the package the
+            // version pages are for must be one the search page actually found.
+            // Catches a dir whose files were captured for different apps, and the
+            // "we fetched a generic page" class that a per-file assert sails past.
+            let pkg = pkg_from_download_url(&vers[0].download_page_url)
+                .unwrap_or_else(|| panic!("{app}: no package in {}", vers[0].download_page_url));
+            assert!(hits.iter().any(|h| h.package == pkg), "{app}: {pkg} missing from search");
             assert!(vers[0].download_page_url.contains("/download/phone-"));
             assert!(vers.iter().any(|v| {
                 let t = version_token(&v.name);
@@ -303,10 +280,23 @@ mod tests {
     }
 
     #[test]
-    fn slug_from_link() {
-        let html = r#"<a href="/apkcombo-installer/com.apkcombo.app/">x</a><a href="/spotify/com.spotify.music/" title="Spotify APK">"#;
-        assert_eq!(slug_from_app_page(html, "com.spotify.music").as_deref(), Some("spotify"));
-        assert_eq!(slug_from_app_page(html, "com.nope.nope"), None);
+    fn slug_off_the_redirect() {
+        let yt = "com.google.android.youtube";
+        // `/en/{pkg}/` redirected to the canonical page: first segment is the slug.
+        assert_eq!(
+            slug_from_canonical_url(&format!("{BASE_URL}/youtube/{yt}/"), yt).as_deref(),
+            Some("youtube")
+        );
+        // Never redirected — APKCombo has no page for it.
+        assert_eq!(
+            slug_from_canonical_url(&format!("{BASE_URL}/{LOOKUP_LOCALE}/{yt}/"), yt),
+            None
+        );
+        // Landed on a different app's page.
+        assert_eq!(
+            slug_from_canonical_url(&format!("{BASE_URL}/spotify/com.spotify.music/"), yt),
+            None
+        );
     }
 
     #[test]

@@ -1,6 +1,3 @@
-//! Thin dispatch layer: parse args -> build registry -> hand off to a per-subcommand
-//! handler in `commands`. No business logic here.
-
 mod commands;
 
 use std::path::PathBuf;
@@ -11,11 +8,12 @@ use apk_fetch::providers::{apkcombo::ApkCombo, apkmirror::ApkMirror, apkpure::Ap
 use clap::builder::styling;
 use clap::{Parser, Subcommand};
 
-// Exit codes (spec: scriptable). clap emits 2 for invalid args on its own.
 pub const EXIT_GENERIC: u8 = 1;
 pub const EXIT_NOT_FOUND: u8 = 3;
 pub const EXIT_BLOCKED: u8 = 4;
 pub const EXIT_NETWORK: u8 = 5;
+/// Ctrl+C, by the usual `128 + SIGINT` convention.
+pub const EXIT_CANCELLED: u8 = 130;
 
 /// CLI error carrying the process exit code to use.
 pub struct AppError {
@@ -73,10 +71,10 @@ enum Command {
         package_id: String,
         #[arg(long)]
         version: Option<String>,
-        /// Use only this provider (overrides --priority / --fallback).
+        /// Use only this provider (skips the priority-ordered fallback).
         #[arg(long)]
         provider: Option<ProviderId>,
-        /// Fallback order for --fallback (comma-separated or repeated).
+        /// Providers to try, in order, until one resolves (comma-separated or repeated).
         #[arg(long, value_delimiter = ',', default_values_t = ProviderId::DEFAULT_PRIORITY.to_vec())]
         priority: Vec<ProviderId>,
         /// Preferred ABI; providers fall back to a universal build if unavailable.
@@ -85,9 +83,6 @@ enum Command {
         /// Output directory.
         #[arg(long, default_value = ".")]
         output: PathBuf,
-        /// Try providers in priority order until one succeeds.
-        #[arg(long)]
-        fallback: bool,
     },
     /// Provider management.
     Providers {
@@ -131,7 +126,6 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
             priority,
             arch,
             output,
-            fallback,
         } => {
             commands::get(
                 &registry,
@@ -141,7 +135,6 @@ async fn dispatch(cli: Cli) -> Result<(), AppError> {
                 &priority,
                 &arch,
                 &output,
-                fallback,
                 cli.json,
             )
             .await
@@ -178,7 +171,7 @@ fn main() -> ExitCode {
     match rt.block_on(dispatch(cli)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            error!(e.source);
+            error!("{:#}", e.source);
             ExitCode::from(e.code)
         }
     }

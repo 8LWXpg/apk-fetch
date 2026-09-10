@@ -32,17 +32,21 @@ impl ApkCombo {
     /// package id -> `{slug}` URL segment. The bare app page `{BASE}/{pkg}/`
     /// self-links with the canonical slug; APKCombo search is name-based and
     /// wouldn't take a package id.
+    ///
+    /// package id -> `{slug}` URL segment, straight off a redirect: `/en/{pkg}/`
+    /// 301s to the canonical `/{slug}/{pkg}/`, so a HEAD gets the slug without
+    /// downloading (or parsing) a page. An app APKCombo doesn't carry simply
+    /// isn't redirected.
+    ///
+    /// Not `/{pkg}/` — that path soft-404s (200, generic page) for plenty of
+    /// real apps, YouTube and Instagram among them.
     async fn slug_for(&self, pkg: &str) -> Result<String, ProviderError> {
-        let html = self
+        let final_url = self
             .fetcher
-            .get_text(&format!("{}/{pkg}/", parse::BASE_URL))
+            .resolve_url(&format!("{}/{}/{pkg}/", parse::BASE_URL, parse::LOOKUP_LOCALE))
             .await?;
-        // A bare page for an unknown package doesn't carry it canonically.
-        if parse::app_page_package(&html).as_deref() != Some(pkg) {
-            return Err(ProviderError::NotFound(format!("no app page for {pkg}")));
-        }
-        parse::slug_from_app_page(&html, pkg)
-            .ok_or_else(|| ProviderError::NotFound(format!("couldn't resolve a slug for {pkg}")))
+        parse::slug_from_canonical_url(&final_url, pkg)
+            .ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))
     }
 }
 

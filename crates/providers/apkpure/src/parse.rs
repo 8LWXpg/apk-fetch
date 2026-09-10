@@ -1,6 +1,3 @@
-//! Pure HTML -> data parsers for APKPure pages. Network-free so they can be
-//! unit-tested against saved fixtures.
-
 use contract::ProviderError;
 use scraper::{Html, Selector};
 
@@ -149,27 +146,7 @@ pub fn download_url(pkg: &str, version: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    /// Every `tests/<app>/` directory with a `search.html`. Adding a dir (via
-    /// `refresh-fixtures.sh <app> <pkg>`) extends coverage with no code change.
-    fn app_dirs() -> Vec<(String, PathBuf)> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-        let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(&root)
-            .expect("tests/ dir")
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_dir() && p.join("search.html").metadata().is_ok_and(|m| m.len() > 0))
-            .map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
-            .collect();
-        dirs.sort();
-        assert!(!dirs.is_empty(), "no tests/<app>/ fixture dirs in {root:?}");
-        dirs
-    }
-
-    fn read(dir: &Path, name: &str) -> String {
-        fs::read_to_string(dir.join(name)).unwrap_or_else(|e| panic!("{}: {e}", dir.join(name).display()))
-    }
+    use fixtures::{app_dirs, read};
 
     /// The package id an app page is for — the last segment of its canonical URL.
     fn app_package(app_html: &str) -> Option<String> {
@@ -183,7 +160,7 @@ mod tests {
 
     #[test]
     fn search_pages_parse() {
-        for (app, dir) in app_dirs() {
+        for (app, dir) in app_dirs(env!("CARGO_MANIFEST_DIR")) {
             let hits = parse_search(&read(&dir, "search.html"))
                 .unwrap_or_else(|e| panic!("{app}: parse_search: {e}"));
             assert!(!hits.is_empty(), "{app}: empty hit list");
@@ -207,7 +184,7 @@ mod tests {
 
     #[test]
     fn app_and_versions_pages_parse() {
-        for (app, dir) in app_dirs() {
+        for (app, dir) in app_dirs(env!("CARGO_MANIFEST_DIR")) {
             let v = latest_version(&read(&dir, "app.html"))
                 .unwrap_or_else(|| panic!("{app}: no version marker on app page"));
             assert!(!v.contains('('), "{app}: (code) suffix not stripped: {v}");

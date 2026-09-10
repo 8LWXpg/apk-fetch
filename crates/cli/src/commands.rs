@@ -1,22 +1,16 @@
-//! One handler per subcommand. All business logic lives in `contract` / `fetch` /
-//! `providers`; these just orchestrate calls and render output.
-
 use std::path::Path;
 
 use anyhow::anyhow;
 use apk_fetch::contract::{
-    AppResult, ProviderId, ProviderError, ProviderFailure, ProviderRegistry, ResolveError, error,
+    AppResult, ProviderError, ProviderFailure, ProviderId, ProviderRegistry, ResolveError, error,
     info, success, warn,
 };
 use apk_fetch::fetch::HttpFetcher;
 use colored::Colorize;
-use indicatif::{ProgressBar, ProgressStyle};
 use unicode_width::UnicodeWidthStr;
 
 use crate::{AppError, EXIT_BLOCKED, EXIT_NETWORK, EXIT_NOT_FOUND};
 
-/// First entry of the default priority — the single provider `search` / `versions`
-/// / plain `get` use when none is named.
 const DEFAULT_PROVIDER: ProviderId = ProviderId::DEFAULT_PRIORITY[0];
 
 fn provider_error_code(e: &ProviderError) -> u8 {
@@ -24,6 +18,7 @@ fn provider_error_code(e: &ProviderError) -> u8 {
         ProviderError::NotFound(_) => EXIT_NOT_FOUND,
         ProviderError::Blocked { .. } | ProviderError::RateLimited => EXIT_BLOCKED,
         ProviderError::Network(_) => EXIT_NETWORK,
+        ProviderError::Cancelled => crate::EXIT_CANCELLED,
         ProviderError::ParseError(_) => crate::EXIT_GENERIC,
     }
 }
@@ -51,8 +46,6 @@ fn resolve_err(e: ResolveError) -> AppError {
     }
 }
 
-/// `• {title}  {version}  {package}`, columns padded to line up, under a
-/// provider-name header.
 fn render_results(provider: ProviderId, results: &[AppResult]) {
     // Pad `s` to `w` terminal columns, then colour — `{:<w$}` counts chars, which
     // is wrong for CJK / wide glyphs, so measure with unicode-width instead.
@@ -79,9 +72,7 @@ fn render_results(provider: ProviderId, results: &[AppResult]) {
     }
 }
 
-/// Search every provider in `providers` (or all registered ones when `all`, or
-/// just the default when neither) and show each one's hits — this is discovery,
-/// not download failover, so we don't stop at the first that answers.
+/// This is discovery, not download failover — don't stop at the first result.
 pub async fn search(
     registry: &ProviderRegistry,
     query: &str,
@@ -167,25 +158,21 @@ pub async fn get(
     priority: &[ProviderId],
     arch: &str,
     output: &Path,
-    fallback: bool,
     json: bool,
 ) -> Result<(), AppError> {
-    let target = if fallback && provider.is_none() {
-        let order: Vec<&str> = priority.iter().map(|p| p.as_str()).collect();
-        info!("resolving {} (fallback: {})...", pkg, order.join(" -> "));
-        registry
-            .resolve_with_fallback(pkg, version, arch, priority)
-            .await
-            .map_err(resolve_err)?
-    } else {
-        let id = provider
-            .or_else(|| priority.first().copied())
-            .unwrap_or(DEFAULT_PROVIDER);
+    let target = if let Some(id) = provider {
         info!("resolving {} via {}...", pkg, id);
         registry
             .download_url(id, pkg, version, arch)
             .await
             .map_err(provider_fail)?
+    } else {
+        let order: Vec<&str> = priority.iter().map(|p| p.as_str()).collect();
+        info!("resolving {} ({})...", pkg, order.join(" -> "));
+        registry
+            .resolve_with_fallback(pkg, version, arch, priority)
+            .await
+            .map_err(resolve_err)?
     };
 
     std::fs::create_dir_all(output).map_err(|e| AppError {
@@ -196,24 +183,17 @@ pub async fn get(
 
     info!("downloading from {} ({})", target.provider, target.url);
     let fetcher = HttpFetcher::new();
-    let pb = ProgressBar::new(0);
-    pb.set_style(
-        ProgressStyle::with_template("{bar:40} {bytes}/{total_bytes} {bytes_per_sec}")
-            .unwrap_or_else(|_| ProgressStyle::default_bar()),
-    );
     let saved = fetcher
-        .download_to_file(&target.url, &target.headers, &dest, |done, total| {
-            if let Some(t) = total {
-                pb.set_length(t);
-            }
-            pb.set_position(done);
-        })
+        .download_to_file(&target.url, &target.headers, &dest)
         .await
         .map_err(|e| AppError {
             code: provider_error_code(&e),
-            source: anyhow!("download failed: {e}"),
+            // A cancel isn't a failure — don't dress it up as one.
+            source: match e {
+                ProviderError::Cancelled => anyhow!("cancelled"),
+                e => anyhow!("download failed: {e}"),
+            },
         })?;
-    pb.finish_and_clear();
 
     if json {
         println!(

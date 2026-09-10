@@ -1,45 +1,31 @@
-//! Shared user-facing output macros. All `#[macro_export]` so they land at the
-//! crate root: `contract::info!`, etc.
-
-/// General base: `print_message!("›", cyan, "trying {}", name)`.
+/// Always uses a format string — a lone `$msg:expr` arm would print `"{f}"` literally.
 #[macro_export]
 macro_rules! print_message {
-    ($symbol:expr, $color:ident, $msg:expr) => {{
+    ($symbol:expr, $color:ident, $($arg:tt)*) => {{
         use colored::Colorize;
-        println!("{} {}", $symbol.$color().bold(), $msg)
-    }};
-    ($symbol:expr, $color:ident, $fmt:expr, $($arg:tt)*) => {{
-        use colored::Colorize;
-        println!("{} {}", $symbol.$color().bold(), format!($fmt, $($arg)*))
+        println!("{} {}", $symbol.$color().bold(), format!($($arg)*))
     }};
 }
 
-/// `error!(err)` prints the full `{:#}` anyhow chain; `error!("fmt", args)` for plain.
+/// For an anyhow chain: `error!("{:#}", err)`.
 #[macro_export]
 macro_rules! error {
-    ($msg:expr) => {{
+    ($($arg:tt)*) => {{
         use colored::Colorize;
-        eprintln!("{} {:#}", "×".bright_red().bold(), $msg)
-    }};
-    ($fmt:expr, $($arg:tt)*) => {{
-        use colored::Colorize;
-        eprintln!("{} {}", "×".bright_red().bold(), format!($fmt, $($arg)*))
+        eprintln!("{} {}", "×".bright_red().bold(), format!($($arg)*))
     }};
 }
 
-/// Resolver progress: "trying apkmirror...".
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => { $crate::print_message!("›", cyan, $($arg)*) };
 }
 
-/// Fallback transitions: "apkmirror blocked, falling back...".
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => { $crate::print_message!("▲", yellow, $($arg)*) };
 }
 
-/// Completed download.
 #[macro_export]
 macro_rules! success {
     ($($arg:tt)*) => { $crate::print_message!("✓", green, $($arg)*) };

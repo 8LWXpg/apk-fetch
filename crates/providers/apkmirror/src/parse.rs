@@ -1,6 +1,3 @@
-//! Pure HTML -> data parsers for APKMirror pages. No network here: every function
-//! takes an HTML string so it can be unit-tested against saved fixtures.
-//!
 //! Selectors are `const &str` on purpose (spec): externalise to config only after
 //! a real breakage proves it's needed.
 
@@ -32,7 +29,6 @@ fn parse_err(msg: impl Into<String>) -> ProviderError {
     ProviderError::ParseError(msg.into())
 }
 
-/// Absolute-ise an APKMirror href.
 pub fn abs(href: &str) -> String {
     if href.starts_with("http") {
         href.to_string()
@@ -284,32 +280,11 @@ pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    /// Every `tests/<app>/` directory holding a `search.html`. The dir name is the
-    /// app; adding a dir (via `refresh-fixtures.sh <app> <pkg>`) extends coverage
-    /// with no code change.
-    fn app_dirs() -> Vec<(String, PathBuf)> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-        let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(&root)
-            .expect("tests/ dir")
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_dir() && p.join("search.html").metadata().is_ok_and(|m| m.len() > 0))
-            .map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
-            .collect();
-        dirs.sort();
-        assert!(!dirs.is_empty(), "no tests/<app>/ fixture dirs in {root:?}");
-        dirs
-    }
-
-    fn read(dir: &Path, name: &str) -> String {
-        fs::read_to_string(dir.join(name)).unwrap_or_else(|e| panic!("{}: {e}", dir.join(name).display()))
-    }
+    use fixtures::{app_dirs, read};
 
     #[test]
     fn search_pages_parse() {
-        for (app, dir) in app_dirs() {
+        for (app, dir) in app_dirs(env!("CARGO_MANIFEST_DIR")) {
             let html = read(&dir, "search.html");
 
             // A dir whose search page shows the "no results" marker (e.g.
@@ -335,7 +310,7 @@ mod tests {
 
     #[test]
     fn download_chains_parse() {
-        for (app, dir) in app_dirs() {
+        for (app, dir) in app_dirs(env!("CARGO_MANIFEST_DIR")) {
             if !dir.join("app.html").is_file() {
                 continue; // search-only dir (e.g. `nonexistent/`)
             }

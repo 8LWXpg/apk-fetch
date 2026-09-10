@@ -16,7 +16,8 @@ Leaf crate packages have bare names; outside code reaches them through the
 | `apk_fetch::fetch` (`fetch`) | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection, `GET` + multipart `POST`. |
 | `apk_fetch::providers::apkmirror` (`providers/apkmirror`) | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
 | `apk_fetch::providers::apkpure` (`providers/apkpure`) | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
-| `apk_fetch::providers::apkcombo` (`providers/apkcombo`) | APKCombo — no Cloudflare/captcha; search → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
+| `apk_fetch::providers::apkcombo` (`providers/apkcombo`) | APKCombo — no Cloudflare/captcha; slug via redirect → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
+| `fixtures` (`providers/fixtures`, dev-only) | The `tests/<app>/` walk and file read its three sibling providers' parser tests share. A `[dev-dependencies]` crate; nothing here ships. (Not named `test` — that shadows the sysroot `test` the `#[test]` macro expands into.) |
 
 Default priority: `apkcombo,apkpure,apkmirror`.
 
@@ -116,18 +117,34 @@ No Cloudflare, no captcha on the download path (the page's reCAPTCHA is unrelate
 ### Fixtures
 
 Pure parsers live in each provider's `src/parse.rs`, unit-tested against saved
-fixtures in `tests/<app>/` (one dir per app; the test module `fs::read_dir`s it,
-so adding a dir extends coverage with no code change). Each provider ships a
+fixtures in `tests/<app>/` (one dir per app; `fixtures::app_dirs` reads the
+directory, so adding a dir extends coverage with no code change). The walk and
+the file read are shared by all three providers, so they live in the dev-only
+`fixtures` crate rather than three times over. Each provider ships a
 `tests/refresh-fixtures.sh`: no args re-fetches every app dir in its `APPS` map,
 `refresh-fixtures.sh <app> <package-id>` adds or refreshes one. Run it after a
 site changes, check the diff, adjust selectors. Tests assert on structure, not
 version numbers, so a refresh rarely breaks them. Selectors are `const &str`.
 
-The fixture app is `com.spotify.music` (a proprietary Play-gated app — the tool's
-real use case) everywhere except `apkmirror`, which keeps `org.schabi.newpipe`:
-APKMirror's Cloudflare blocks fixture re-fetching once an IP has made many
-requests, and the newpipe fixtures were already captured. Align it to spotify
-when the IP is clear; the tests don't care which app.
+Every provider carries the same two fixture apps: `youtube/`
+(`com.google.android.youtube`) and `youtube-music/`
+(`com.google.android.apps.youtube.music`). Both are proprietary Play-gated
+Google apps — the tool's real use case, and the hardest case each provider has
+to handle. YouTube earns its place twice over: its APKCombo `/{pkg}/` page
+soft-404s, so it pins the `/en/` hop that a Spotify-only corpus sailed past.
+
+apkmirror keeps a third dir, `nonexistent/`, whose no-results search page must
+parse as `NotFound` rather than junk hits off the "Popular uploads" widget.
+
+The **apkcombo dir name doubles as its search query** (APKCombo search is
+name-based, not package-id-addressable), so renaming a dir there changes what
+gets fetched. The other two search by package id and treat the dir name as a
+label.
+
+Each app dir's fixtures are cross-checked against *each other* — the package the
+version/download pages are for must be one the search page actually found. A
+per-file "did this parse" assert cannot catch a fixture captured from the wrong
+page; this can.
 
 ## Why "blocked" is a typed error
 
@@ -185,3 +202,5 @@ answer `200` with an HTML landing page, and an APK/XAPK must start with `PK`.
 | 3 | not found on any provider |
 | 4 | all providers blocked / rate-limited |
 | 5 | network failure |
+| 130 | cancelled with Ctrl+C (`128 + SIGINT`) |
+

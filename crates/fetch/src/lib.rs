@@ -50,7 +50,6 @@ fn looks_blocked(body: &str) -> bool {
 
 /// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
 /// `PK\x05\x06`. An empty or missing file fails the check.
-/// APK-family extension implied by a content-type or final URL, if any.
 fn package_ext_from(content_type: &str, url: &str) -> Option<&'static str> {
     let ct = content_type.to_ascii_lowercase();
     if ct.contains("xapk") {
@@ -65,8 +64,8 @@ fn package_ext_from(content_type: &str, url: &str) -> Option<&'static str> {
         .find(|ext| hay.contains(&format!(".{ext}?")) || hay.ends_with(&format!(".{ext}")))
 }
 
-/// If the server says the payload is a different package type than `dest`'s
-/// extension, rename it. Returns the path actually on disk.
+/// Renames file extension if the server's content-type / final URL indicates a
+/// different package type than `dest`'s extension. Returns the path actually on disk.
 async fn rename_to_real_ext(
     dest: &Path,
     content_type: &str,
@@ -95,7 +94,8 @@ async fn starts_with_zip_magic(path: &std::path::Path) -> bool {
     }
 }
 
-/// curl exit codes worth retrying (connect / resolve / timeout / recv).
+/// curl exit codes worth retrying: resolve (6), connect (7), timeout (28),
+/// SSL connect (35), empty reply (52), send (55), recv (56).
 fn curl_exit_is_transient(code: Option<i32>) -> bool {
     matches!(code, Some(6 | 7 | 28 | 35 | 52 | 55 | 56))
 }
@@ -111,9 +111,7 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 
 #[async_trait]
 pub trait Fetcher: Send + Sync {
-    /// GET a URL and return the body as text (throttle + retry + block detection).
     async fn get_text(&self, url: &str) -> Result<String, ProviderError>;
-    /// GET a URL and return the raw body bytes.
     async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, ProviderError>;
 }
 
@@ -136,7 +134,6 @@ impl HttpFetcher {
         }
     }
 
-    /// Sleep so at least `min_gap` has elapsed since the previous request.
     async fn throttle(&self) {
         let mut last = self.last_request.lock().await;
         if let Some(prev) = *last {
@@ -148,10 +145,16 @@ impl HttpFetcher {
         *last = Some(Instant::now());
     }
 
-    fn base_cmd(url: &str, headers: &[(String, String)]) -> Command {
+    /// `progress`: show curl's own progress bar on stderr (downloads); otherwise
+    /// stay silent (`-s`), which also suppresses the meter.
+    fn base_cmd(url: &str, headers: &[(String, String)], progress: bool) -> Command {
         let mut cmd = Command::new("curl");
+        if progress {
+            cmd.args(["-S", "--progress-bar"]);
+        } else {
+            cmd.arg("-sS");
+        }
         cmd.args([
-            "-sS",
             "-L",
             "--compressed",
             "--connect-timeout",
@@ -166,6 +169,9 @@ impl HttpFetcher {
             cmd.arg("-H").arg(format!("{k}: {v}"));
         }
         cmd.arg(url);
+        // Nothing else ties curl's life to ours: an orphan keeps downloading after
+        // we're gone. Covers every path whose future is dropped mid-flight.
+        cmd.kill_on_drop(true);
         cmd
     }
 
@@ -189,7 +195,6 @@ impl HttpFetcher {
         self.request(url, &[], &extra_ref).await
     }
 
-    /// One request with retry-on-transient. `Blocked` / `NotFound` never retry.
     async fn request(
         &self,
         url: &str,
@@ -200,7 +205,7 @@ impl HttpFetcher {
         loop {
             self.throttle().await;
 
-            let output = Self::base_cmd(url, headers)
+            let output = Self::base_cmd(url, headers, false)
                 .args(["--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
                 .args(extra_args)
                 .arg("-w")
@@ -241,77 +246,98 @@ impl HttpFetcher {
         }
     }
 
-    /// Stream a URL to `dest`, calling `progress(downloaded, total)` while it runs.
-    /// `total` is `None` — curl owns the transfer, we just poll the partial file.
+    /// The URL a `HEAD` lands on after redirects, body never downloaded. Lets a
+    /// provider read something the server encodes in a redirect instead of
+    /// scraping it back out of the page (APKCombo's `/en/{pkg}/` -> canonical
+    /// `/{slug}/{pkg}/`). No redirect means the URL is returned unchanged.
+    pub async fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
+        self.throttle().await;
+
+        let output = Self::base_cmd(url, &[], false)
+            .args(["-I", "--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
+            .arg("-w")
+            .arg("\n%{url_effective}")
+            .output()
+            .await
+            .map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
+
+        if !output.status.success() {
+            return Err(network_err(format!(
+                "curl exited {:?}: {}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.rsplit('\n').next().unwrap_or_default().trim().to_string())
+    }
+
+    /// Stream a URL to `dest`. curl draws its own progress bar on the inherited
+    /// stderr (it knows the content length; we did not).
     ///
     /// Returns the path actually written: if the server's content-type / final URL
     /// says the payload is a different package type than `dest`'s extension (e.g.
     /// an `.xapk` when we guessed `.apk`), the file is renamed to match.
-    pub async fn download_to_file<F>(
+    pub async fn download_to_file(
         &self,
         url: &str,
         headers: &[(String, String)],
         dest: &Path,
-        mut progress: F,
-    ) -> Result<std::path::PathBuf, ProviderError>
-    where
-        F: FnMut(u64, Option<u64>) + Send,
-    {
+    ) -> Result<std::path::PathBuf, ProviderError> {
         self.throttle().await;
 
-        let mut child = Self::base_cmd(url, headers)
+        // `.output()` would force stderr to a pipe and hide curl's progress bar;
+        // spawn instead so stderr stays on the inherited terminal.
+        let mut child = Self::base_cmd(url, headers, true)
             .args(["--fail", "--retry", &MAX_RETRIES.to_string()])
             .arg("-o")
             .arg(dest)
             .arg("-w")
             .arg("%{content_type}\t%{url_effective}")
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn()
             .map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
 
-        loop {
-            tokio::select! {
-                status = child.wait() => {
-                    let status = status.map_err(network_err)?;
-                    if let Ok(m) = tokio::fs::metadata(dest).await {
-                        progress(m.len(), None);
-                    }
-                    if !status.success() {
-                        let mut err = String::new();
-                        if let Some(mut s) = child.stderr.take() {
-                            use tokio::io::AsyncReadExt;
-                            let _ = s.read_to_string(&mut err).await;
-                        }
-                        let _ = tokio::fs::remove_file(dest).await;
-                        return Err(network_err(format!(
-                            "curl download failed ({status}): {}",
-                            err.trim()
-                        )));
-                    }
-                    // APK/XAPK are ZIP: a non-`PK` payload is an error/landing page
-                    // that came back 200 (some mirror download endpoints do this).
-                    if !starts_with_zip_magic(dest).await {
-                        let _ = tokio::fs::remove_file(dest).await;
-                        return Err(network_err(
-                            "downloaded file is not an APK (server returned a non-package response)",
-                        ));
-                    }
-                    let mut w = String::new();
-                    if let Some(mut s) = child.stdout.take() {
-                        use tokio::io::AsyncReadExt;
-                        let _ = s.read_to_string(&mut w).await;
-                    }
-                    let (ct, final_url) = w.split_once('\t').unwrap_or((w.as_str(), ""));
-                    return rename_to_real_ext(dest, ct, final_url).await;
-                }
-                _ = tokio::time::sleep(Duration::from_millis(200)) => {
-                    if let Ok(m) = tokio::fs::metadata(dest).await {
-                        progress(m.len(), None);
-                    }
-                }
+        // Downloads are the long-lived curl, so Ctrl+C lands here. Handling the
+        // signal replaces the default handler, which aborts the process outright —
+        // no unwinding, no `kill_on_drop`, so curl would keep downloading orphaned.
+        //
+        // Wait before reading stdout, not after: `read_to_string` only returns once
+        // curl closes the pipe, so reading first parks us here for the whole
+        // download with no `ctrl_c` branch armed. `wait()` leaves stdout open, and
+        // the `-w` line is far too small to fill the pipe buffer.
+        let status = tokio::select! {
+            status = child.wait() => status.map_err(network_err)?,
+            _ = tokio::signal::ctrl_c() => {
+                let _ = child.kill().await;
+                let _ = tokio::fs::remove_file(dest).await;
+                eprintln!();
+                return Err(ProviderError::Cancelled);
             }
+        };
+
+        let mut stdout_buf = String::new();
+        if let Some(mut s) = child.stdout.take() {
+            use tokio::io::AsyncReadExt;
+            let _ = s.read_to_string(&mut stdout_buf).await;
         }
+
+        if !status.success() {
+            let _ = tokio::fs::remove_file(dest).await;
+            // curl already printed the reason to the inherited stderr.
+            return Err(network_err(format!("curl download failed ({status})")));
+        }
+        // APK/XAPK are ZIP: a non-`PK` payload is an error/landing page
+        // that came back 200 (some mirror download endpoints do this).
+        if !starts_with_zip_magic(dest).await {
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(network_err(
+                "downloaded file is not an APK (server returned a non-package response)",
+            ));
+        }
+        let (ct, final_url) = stdout_buf.split_once('\t').unwrap_or((stdout_buf.as_str(), ""));
+        rename_to_real_ext(dest, ct, final_url).await
     }
 }
 

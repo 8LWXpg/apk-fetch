@@ -1,7 +1,3 @@
-//! Core contract: the [`Provider`] trait, domain types, error taxonomy, and the
-//! [`ProviderRegistry`] fallback resolver. Everything else depends on this staying
-//! stable.
-
 pub mod ui;
 
 use async_trait::async_trait;
@@ -97,10 +93,12 @@ pub enum ProviderError {
     Network(#[from] std::io::Error),
     #[error("rate limited")]
     RateLimited,
+    /// The user pressed Ctrl+C. Not a failure of the provider or the network, so
+    /// it gets its own variant and the conventional SIGINT exit code.
+    #[error("cancelled")]
+    Cancelled,
 }
 
-/// A [`ProviderError`] tagged with which provider produced it. This is what leaves
-/// the [`ProviderRegistry`] — a bare `ProviderError` never reaches the CLI.
 #[derive(Debug, thiserror::Error)]
 #[error("{provider}: {source}")]
 pub struct ProviderFailure {
@@ -150,7 +148,6 @@ pub trait Provider: Send + Sync {
     }
 }
 
-/// Aggregated failure when every provider in the fallback chain gave up.
 #[derive(Debug)]
 pub struct ResolveError {
     pub pkg: String,
@@ -169,7 +166,6 @@ impl ResolveError {
             })
     }
 
-    /// True if every attempt was a clean "not found".
     pub fn all_not_found(&self) -> bool {
         !self.attempts.is_empty()
             && self
@@ -178,7 +174,6 @@ impl ResolveError {
                 .all(|f| matches!(f.source, ProviderError::NotFound(_)))
     }
 
-    /// True if any attempt failed on the network (vs. parse / not-found).
     pub fn any_network(&self) -> bool {
         self.attempts
             .iter()
@@ -215,7 +210,6 @@ impl ProviderRegistry {
         self.providers.push(provider);
     }
 
-    /// The registered providers, in registration order.
     pub fn names(&self) -> Vec<ProviderId> {
         self.providers.iter().map(|p| p.name()).collect()
     }
@@ -271,8 +265,6 @@ impl ProviderRegistry {
         Self::tag(id, self.require(id).check().await)
     }
 
-    /// Try each provider in `order`; return the first `download_url` success.
-    /// Any `ProviderError` (especially `Blocked`) moves on to the next provider.
     pub async fn resolve_with_fallback(
         &self,
         pkg: &str,

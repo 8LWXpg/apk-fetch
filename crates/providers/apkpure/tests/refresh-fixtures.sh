@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-#
-# Re-fetch the APKPure HTML fixtures that src/parse.rs tests run against.
-# Fixtures live in tests/<app>/*.html — one directory per app.
-#
-#   bash crates/providers/apkpure/tests/refresh-fixtures.sh
-#       refresh every app directory that already exists
-#
-#   bash crates/providers/apkpure/tests/refresh-fixtures.sh <app> <package-id>
-#       add (or refresh just) one app, e.g.  focus  org.mozilla.focus
-#
-# Run this when APKPure changes its markup: check the diff, then adjust the
-# selectors in src/parse.rs. Tests assert on structure, not version numbers, so a
-# refresh rarely breaks them. Fixtures are trimmed of <script>/<style>/<svg>.
-# APKMirror has its own script at ../../apkmirror/tests/.
 
 set -euo pipefail
 
@@ -23,7 +9,8 @@ TESTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Apps refreshed by a no-argument run: <dir> -> <package-id>. Add a line to make
 # an app part of the default set.
 declare -A APPS=(
-  [spotify]=com.spotify.music
+  [youtube]=com.google.android.youtube
+  [youtube-music]=com.google.android.apps.youtube.music
 )
 
 TRIM='import sys,re
