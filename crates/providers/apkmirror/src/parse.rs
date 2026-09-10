@@ -1,6 +1,3 @@
-//! Selectors are `const &str` on purpose (spec): externalise to config only after
-//! a real breakage proves it's needed.
-
 use contract::ProviderError;
 use scraper::{Html, Selector};
 

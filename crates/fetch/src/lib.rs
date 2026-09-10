@@ -1,12 +1,6 @@
-//! HTTP via the system `curl`. We shell out rather than use a Rust HTTP client
-//! because mirror sites (APKMirror) sit behind Cloudflare rules that challenge
-//! `reqwest`'s TLS fingerprint on content paths — `curl` (schannel / system
-//! OpenSSL) passes with a browser UA where `rustls` and `native-tls` both get a
-//! managed challenge. `curl` ships with Windows 10+, macOS, and virtually every
-//! Linux.
-//!
-//! Responsibilities: per-provider throttle, transient-error retry, and mapping
-//! Cloudflare/anti-bot responses to `ProviderError::Blocked`.
+//! HTTP via the system `curl`, not a Rust client: Cloudflare challenges
+//! `reqwest`'s TLS fingerprint on APKMirror content paths, where `curl` with a
+//! browser UA passes.
 
 use std::path::Path;
 use std::process::Stdio;
