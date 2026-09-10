@@ -76,50 +76,15 @@ name = "apk-fetch"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "apkcombo",
- "apkmirror",
- "apkpure",
+ "async-trait",
  "clap",
  "colored",
- "contract",
- "fetch",
+ "scraper",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "unicode-width",
-]
-
-[[package]]
-name = "apkcombo"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "contract",
- "fetch",
- "fixtures",
- "scraper",
-]
-
-[[package]]
-name = "apkmirror"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "contract",
- "fetch",
- "fixtures",
- "scraper",
-]
-
-[[package]]
-name = "apkpure"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "contract",
- "fetch",
- "fixtures",
- "scraper",
 ]
 
 [[package]]
@@ -214,17 +179,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "contract"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "clap",
- "colored",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "cssparser"
 version = "0.31.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -288,19 +242,6 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
-
-[[package]]
-name = "fetch"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "contract",
- "tokio",
-]
-
-[[package]]
-name = "fixtures"
-version = "0.1.0"
 
 [[package]]
 name = "futf"

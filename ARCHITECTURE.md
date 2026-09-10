@@ -4,27 +4,59 @@
 behind one trait so a single site breaking, changing its markup, or blocking
 requests fails over to the next instead of taking the whole tool down.
 
-## Crate layout
+## Module layout
 
-Leaf crate packages have bare names; outside code reaches them through the
-`apk_fetch::` umbrella.
+One crate. Every part is built and used together and nothing is consumed
+independently, so the layering is enforced by module visibility rather than by
+separate packages.
 
-| Namespace (dir under `crates/`) | Responsibility |
+```
+src/
+├── main.rs            thin wrapper: cli::run() -> ExitCode
+├── lib.rs             pub mod cli, common, providers
+├── cli.rs             clap definitions, exit codes, AppError, registry building
+├── cli/
+│   └── commands.rs    one handler per subcommand
+├── common.rs          re-exports the items below that callers use most
+├── common/
+│   ├── contract.rs    Provider trait, domain types, ProviderError, ProviderRegistry
+│   ├── ui.rs          output macros (info!/warn!/success!/error!)
+│   └── fetch.rs       HTTP via the system curl
+├── providers.rs       pub use ApkCombo, ApkMirror, ApkPure
+└── providers/
+    ├── fixtures.rs    #[cfg(test)] fixture plumbing
+    ├── apkcombo.rs
+    ├── apkcombo/
+    │   ├── parse.rs
+    │   └── tests/     <app>/*.html + refresh-fixtures.sh
+    ├── apkmirror.rs, apkmirror/{parse.rs, tests/}
+    └── apkpure.rs,   apkpure/{parse.rs, tests/}
+```
+
+Modules use the `foo.rs` + `foo/` form throughout rather than `foo/mod.rs`, so
+no two files in the tree share a name.
+
+Everything about one site — its `Provider` impl, its parser, its saved pages
+and the script that re-scrapes them — lives in that provider's folder.
+
+| Module | Responsibility |
 |---|---|
-| `apk_fetch` (`cli`, package `apk-fetch`, lib + bin) | Umbrella lib re-exporting the below, plus the clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
-| `apk_fetch::contract` (`contract`) | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. (Not called `core` — a crate by that name shadows the `core` sysroot crate and breaks derive macros.) |
-| `apk_fetch::fetch` (`fetch`) | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection, `GET` + multipart `POST`. |
-| `apk_fetch::providers::apkmirror` (`providers/apkmirror`) | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
-| `apk_fetch::providers::apkpure` (`providers/apkpure`) | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
-| `apk_fetch::providers::apkcombo` (`providers/apkcombo`) | APKCombo — no Cloudflare/captcha; slug via redirect → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
-| `fixtures` (`providers/fixtures`, dev-only) | The `tests/<app>/` walk and file read its three sibling providers' parser tests share. A `[dev-dependencies]` crate; nothing here ships. (Not named `test` — that shadows the sysroot `test` the `#[test]` macro expands into.) |
+| `cli` | The clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
+| `common::contract` | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. |
+| `common::fetch` | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection, `GET` + multipart `POST`. |
+| `providers::ApkMirror` | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
+| `providers::ApkPure` | APKPure — package-id-addressable, `d.apkpure.com/b/APK/{pkg}` 302s straight to the APK. |
+| `providers::ApkCombo` | APKCombo — no Cloudflare/captcha; slug via redirect → download page (`xid`) → `POST /dl` variant fragment → `POST /checkin` token → signed R2 URL. |
+
+The frequently-used items of `common`'s modules are re-exported from
+`common` itself, so callers import them as `crate::common::{Provider,
+HttpFetcher, ...}`. The output macros are `#[macro_export]`, so they live at
+the crate root: `use crate::{info, warn}`.
 
 Default priority: `apkcombo,apkpure,apkmirror`.
 
-Dependency direction is strictly `apk-fetch → providers → fetch → contract`;
-`contract` depends on nothing in the workspace. The umbrella lib
-(`crates/cli/src/lib.rs`) lives beside `main.rs` in the `apk-fetch` package, so
-the binary reaches the leaves as `apk_fetch::…` with no extra crate.
+Dependency direction is strictly `cli → providers → common`; `common` reaches
+for nothing above it.
 
 ## The `Provider` trait boundary
 
@@ -116,13 +148,18 @@ No Cloudflare, no captcha on the download path (the page's reCAPTCHA is unrelate
 
 ### Fixtures
 
-Pure parsers live in each provider's `src/parse.rs`, unit-tested against saved
-fixtures in `tests/<app>/` (one dir per app; `fixtures::app_dirs` reads the
-directory, so adding a dir extends coverage with no code change). The walk and
-the file read are shared by all three providers, so they live in the dev-only
-`fixtures` crate rather than three times over. Each provider ships a
-`tests/refresh-fixtures.sh`: no args re-fetches every app dir in its `APPS` map,
-`refresh-fixtures.sh <app> <package-id>` adds or refreshes one. Run it after a
+Pure parsers live in each provider's `parse.rs`, unit-tested against saved
+fixtures in `src/providers/<provider>/tests/<app>/` (one dir per app;
+`fixtures::app_dirs` reads the directory, so adding a dir extends coverage with
+no code change). They sit under `src/` rather than in a root `tests/` tree
+because nothing outside that provider's own unit tests reads them. The walk and
+the file read are shared by all three providers, so they live once in the
+`#[cfg(test)]` `fixtures` module. Each provider keeps its own
+`tests/refresh-fixtures.sh`: no args re-fetches every app dir in its
+`APPS` map, `refresh-fixtures.sh <app> <package-id>` adds or refreshes one. The
+scrape chains have nothing in common between sites — apkmirror walks five linked
+pages, apkpure hits three flat URLs — so they are deliberately not merged into
+one script; only ~15 lines of curl/trim boilerplate would be shared. Run it after a
 site changes, check the diff, adjust selectors. Tests assert on structure, not
 version numbers, so a refresh rarely breaks them. Selectors are `const &str`.
 

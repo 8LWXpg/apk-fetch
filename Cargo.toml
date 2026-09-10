@@ -1,28 +1,14 @@
-[workspace]
-resolver = "2"
-members = [
-  "crates/cli",
-  "crates/contract",
-  "crates/fetch",
-  "crates/providers/apkcombo",
-  "crates/providers/apkmirror",
-  "crates/providers/apkpure",
-  "crates/providers/fixtures",
-]
-
-[workspace.package]
+[package]
+name = "apk-fetch"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
-[workspace.dependencies]
-apkcombo = { path = "crates/providers/apkcombo" }
-apkmirror = { path = "crates/providers/apkmirror" }
-apkpure = { path = "crates/providers/apkpure" }
-contract = { path = "crates/contract" }
-fetch = { path = "crates/fetch" }
-fixtures = { path = "crates/providers/fixtures" }
+[[bin]]
+name = "apk-fetch"
+path = "src/main.rs"
 
+[dependencies]
 anyhow = "1.0.104"
 async-trait = "0.1.92"
 clap = { version = "4.6.6", features = ["derive"] }
@@ -31,19 +17,16 @@ scraper = { version = "0.20.0", default-features = false, features = ["errors"] 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.20"
-tokio = {
-  version = "1.53.1",
-  features = [
-    "fs",
-    "io-util",
-    "macros",
-    "process",
-    "rt",
-    "signal",
-    "sync",
-    "time",
-  ]
-}
+tokio = { version = "1.53.1", features = [
+  "fs",
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "signal",
+  "sync",
+  "time",
+] }
 unicode-width = "0.2.2"
 
 [profile.release]
