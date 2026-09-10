@@ -4,10 +4,6 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
-[[bin]]
-name = "apk-fetch"
-path = "src/main.rs"
-
 [dependencies]
 anyhow = "1.0.104"
 async-trait = "0.1.92"

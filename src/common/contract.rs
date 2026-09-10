@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-/// The known providers. One enum, used end to end: the CLI parses `--provider`
-/// into it, the registry is keyed by it, and every [`ProviderFailure`] carries it.
+/// The known providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
@@ -171,15 +170,6 @@ pub struct ProviderRegistry {
 }
 
 impl ProviderRegistry {
-	pub fn new() -> Self {
-		Self::default()
-	}
-
-	/// Appends one provider.
-	pub fn register(&mut self, provider: Box<dyn Provider>) {
-		self.providers.push(provider);
-	}
-
 	/// The highest-priority provider. The registry is never empty: it is built
 	/// from a non-empty selection.
 	pub fn top(&self) -> ProviderId {

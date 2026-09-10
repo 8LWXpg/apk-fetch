@@ -4,6 +4,6 @@ mod apkpure;
 #[cfg(test)]
 mod fixtures;
 
-pub use apkcombo::ApkCombo;
-pub use apkmirror::ApkMirror;
-pub use apkpure::ApkPure;
+pub(crate) use apkcombo::ApkCombo;
+pub(crate) use apkmirror::ApkMirror;
+pub(crate) use apkpure::ApkPure;

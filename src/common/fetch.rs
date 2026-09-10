@@ -135,7 +135,6 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 #[async_trait]
 pub trait Fetcher: Send + Sync {
 	async fn get_text(&self, url: &str) -> Result<String, ProviderError>;
-	async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, ProviderError>;
 }
 
 /// A curl-backed fetcher with a per-instance throttle. Construct one per provider
@@ -395,10 +394,6 @@ impl Default for HttpFetcher {
 impl Fetcher for HttpFetcher {
 	async fn get_text(&self, url: &str) -> Result<String, ProviderError> {
 		self.get(url, &[]).await
-	}
-
-	async fn get_bytes(&self, url: &str) -> Result<Vec<u8>, ProviderError> {
-		self.get(url, &[]).await.map(String::into_bytes)
 	}
 }
 

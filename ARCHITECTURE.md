@@ -6,23 +6,26 @@ requests fails over to the next instead of taking the whole tool down.
 
 ## Module layout
 
-One crate. Every part is built and used together and nothing is consumed
-independently, so the layering is enforced by module visibility rather than by
-separate packages.
+One crate, one binary. Every part is built and used together and nothing is
+consumed independently, so there is no library target and the layering is
+enforced by module visibility rather than by separate packages. Items shared
+across modules are `pub(crate)`; nothing is `pub` to the outside world.
 
 ```
 src/
-├── main.rs            thin wrapper: cli::run() -> ExitCode
-├── lib.rs             pub mod cli, common, providers
-├── cli.rs             clap definitions, exit codes, AppError, registry building
+├── main.rs            mod declarations, the tokio runtime, exit code, error print
+├── cli.rs             facade: mod args, commands, dispatch, exit
 ├── cli/
+│   ├── args.rs        Cli, Command, ProvidersCmd, get_styles
+│   ├── dispatch.rs    dispatch, selection, build_registry
+│   ├── exit.rs        EXIT_*, AppError, provider_error_code
 │   └── commands.rs    one handler per subcommand
-├── common.rs          re-exports the items below that callers use most
+├── common.rs          facade + re-exports
 ├── common/
 │   ├── contract.rs    Provider trait, domain types, ProviderError, ProviderRegistry
 │   ├── ui.rs          output macros (info!/warn!/success!/error!)
 │   └── fetch.rs       HTTP via the system curl
-├── providers.rs       pub use ApkCombo, ApkMirror, ApkPure
+├── providers.rs       facade: pub(crate) use ApkCombo, ApkMirror, ApkPure
 └── providers/
     ├── fixtures.rs    #[cfg(test)] fixture plumbing
     ├── apkcombo.rs
@@ -36,12 +39,17 @@ src/
 Modules use the `foo.rs` + `foo/` form throughout rather than `foo/mod.rs`, so
 no two files in the tree share a name.
 
+A parent module is a bare facade — `mod` declarations and re-exports only —
+when it exists to group siblings (`cli.rs`, `common.rs`, `providers.rs`). The
+code that would otherwise pile up in it lives in a named child instead, so
+"where does this go" always has an answer other than the parent.
+
 Everything about one site — its `Provider` impl, its parser, its saved pages
 and the script that re-scrapes them — lives in that provider's folder.
 
 | Module | Responsibility |
 |---|---|
-| `cli` | The clap binary. Thin dispatch: parse args → build registry → per-subcommand handler. |
+| `cli` | The command-line surface. Thin dispatch: parse args → build registry → per-subcommand handler. |
 | `common::contract` | The `Provider` trait, domain types, `ProviderError`, `ProviderRegistry` fallback resolver, and the shared output macros. No I/O. |
 | `common::fetch` | HTTP via the system `curl`: per-provider throttle, transient-error retry, blocked-response detection, `GET` + multipart `POST`. |
 | `providers::ApkMirror` | APKMirror — search-walk to the download; Cloudflare-challenge-prone (see below). |
@@ -51,12 +59,13 @@ and the script that re-scrapes them — lives in that provider's folder.
 The frequently-used items of `common`'s modules are re-exported from
 `common` itself, so callers import them as `crate::common::{Provider,
 HttpFetcher, ...}`. The output macros are `#[macro_export]`, so they live at
-the crate root: `use crate::{info, warn}`.
+the crate root: `use crate::{info, warn}` — and because `main.rs` *is* the
+crate root, it calls them unqualified rather than importing them.
 
 Default priority: `apkcombo,apkpure,apkmirror`.
 
-Dependency direction is strictly `cli → providers → common`; `common` reaches
-for nothing above it.
+Dependency direction is strictly `main → cli → providers → common`; `common`
+reaches for nothing above it.
 
 ## The `Provider` trait boundary
 

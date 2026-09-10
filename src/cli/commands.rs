@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
 
-use super::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
+use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
 fn render_results(provider: ProviderId, results: &[AppResult]) {
 	// Pad `s` to `w` terminal columns, then color.
@@ -33,7 +33,11 @@ fn render_results(provider: ProviderId, results: &[AppResult]) {
 	}
 }
 
-pub async fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Result<(), AppError> {
+pub(super) async fn search(
+	registry: &ProviderRegistry,
+	query: &str,
+	json: bool,
+) -> Result<(), AppError> {
 	let mut merged: Vec<AppResult> = Vec::new();
 	let mut hit = false;
 	let mut last: Option<AppError> = None;
@@ -77,7 +81,11 @@ pub async fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Res
 	}
 }
 
-pub async fn versions(registry: &ProviderRegistry, pkg: &str, json: bool) -> Result<(), AppError> {
+pub(super) async fn versions(
+	registry: &ProviderRegistry,
+	pkg: &str,
+	json: bool,
+) -> Result<(), AppError> {
 	let id = registry.top();
 	let list = registry.versions(id, pkg).await?;
 	if json {
@@ -90,7 +98,7 @@ pub async fn versions(registry: &ProviderRegistry, pkg: &str, json: bool) -> Res
 	Ok(())
 }
 
-pub async fn get(
+pub(super) async fn get(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	version: Option<&str>,
@@ -119,7 +127,7 @@ pub async fn get(
 		.download_to_file(&target.url, &target.headers, &dest)
 		.await
 		.map_err(|e| AppError {
-			code: super::provider_error_code(&e),
+			code: super::exit::provider_error_code(&e),
 			// A cancel isn't a failure — don't dress it up as one.
 			source: match e {
 				ProviderError::Cancelled => anyhow!("cancelled"),
@@ -143,7 +151,7 @@ pub async fn get(
 	Ok(())
 }
 
-pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
+pub(super) fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
 	let names = registry.names();
 	if json {
 		let rows: Vec<_> = names
@@ -160,7 +168,10 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
 	Ok(())
 }
 
-pub async fn providers_check(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
+pub(super) async fn providers_check(
+	registry: &ProviderRegistry,
+	json: bool,
+) -> Result<(), AppError> {
 	let targets = registry.names();
 	let mut results = Vec::new();
 	let mut worst: Option<AppError> = None;

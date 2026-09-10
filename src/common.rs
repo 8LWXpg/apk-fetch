@@ -1,9 +1,9 @@
-pub mod contract;
-pub mod fetch;
-pub mod ui;
+pub(crate) mod contract;
+pub(crate) mod fetch;
+pub(crate) mod ui;
 
-pub use contract::{
-	AppResult, DownloadTarget, Provider, ProviderError, ProviderFailure, ProviderId,
-	ProviderRegistry, ResolveError, VersionInfo, download_filename,
+pub(crate) use contract::{
+	AppResult, Provider, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
+	ResolveError, download_filename,
 };
-pub use fetch::{Fetcher, HttpFetcher};
+pub(crate) use fetch::HttpFetcher;
