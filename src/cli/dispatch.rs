@@ -46,7 +46,9 @@ fn selection(cmd: &Command) -> Vec<ProviderId> {
 		Command::Search { all: true, .. } => all(),
 		Command::Search { provider, .. } if provider.is_empty() => top(),
 		Command::Search { provider, .. } => provider.clone(),
-		Command::Versions { provider, .. } => provider.map_or_else(top, |p| vec![p]),
+		Command::Versions { all: true, .. } => all(),
+		Command::Versions { provider, .. } if provider.is_empty() => top(),
+		Command::Versions { provider, .. } => provider.clone(),
 		Command::Get {
 			provider: Some(p), ..
 		} => vec![*p],

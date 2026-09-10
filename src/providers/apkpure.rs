@@ -64,8 +64,7 @@ impl Provider for ApkPure {
 		Ok(parse::parse_versions(&html)?
 			.into_iter()
 			.map(|r| VersionInfo {
-				version: r.version,
-				version_code: r.version_code,
+				version: r,
 				uploaded: None,
 				provider: NAME,
 			})
@@ -92,7 +91,6 @@ impl Provider for ApkPure {
 					.await?;
 				let v = parse::parse_versions(&html)?
 					.into_iter()
-					.map(|r| r.version)
 					.find(|v| parse::version_matches(v, want))
 					.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?;
 				(v.clone(), v)

@@ -4,6 +4,6 @@ pub(crate) mod ui;
 
 pub(crate) use contract::{
 	AppResult, Provider, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
-	ResolveError, download_filename,
+	ResolveError, VersionInfo, download_filename,
 };
 pub(crate) use fetch::HttpFetcher;

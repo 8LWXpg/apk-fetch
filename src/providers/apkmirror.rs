@@ -106,7 +106,6 @@ impl Provider for ApkMirror {
 			.into_iter()
 			.map(|r| VersionInfo {
 				version: parse::version_token(&r.title),
-				version_code: None, // only on the per-version variants page
 				uploaded: r.uploaded,
 				provider: NAME,
 			})

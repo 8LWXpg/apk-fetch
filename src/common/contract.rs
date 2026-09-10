@@ -49,7 +49,6 @@ pub struct AppResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionInfo {
 	pub version: String,
-	pub version_code: Option<String>,
 	pub uploaded: Option<String>,
 	pub provider: ProviderId,
 }
@@ -170,12 +169,6 @@ pub struct ProviderRegistry {
 }
 
 impl ProviderRegistry {
-	/// The highest-priority provider. The registry is never empty: it is built
-	/// from a non-empty selection.
-	pub fn top(&self) -> ProviderId {
-		self.names()[0]
-	}
-
 	pub fn names(&self) -> Vec<ProviderId> {
 		self.providers.iter().map(|p| p.id()).collect()
 	}

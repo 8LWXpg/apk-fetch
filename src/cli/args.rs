@@ -40,8 +40,13 @@ pub(super) enum Command {
 	/// List published versions of a package.
 	Versions {
 		package_id: String,
+		/// Providers to query (comma-separated or repeated). Default: just the
+		/// top-priority one.
+		#[arg(long, value_delimiter = ',', conflicts_with = "all")]
+		provider: Vec<ProviderId>,
+		/// Search every available provider.
 		#[arg(long)]
-		provider: Option<ProviderId>,
+		all: bool,
 	},
 	/// Resolve and download an APK.
 	Get {

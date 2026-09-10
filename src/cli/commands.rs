@@ -1,6 +1,11 @@
 use std::path::Path;
 
-use crate::common::{AppResult, HttpFetcher, ProviderError, ProviderId, ProviderRegistry};
+use std::future::Future;
+
+use crate::common::{
+	AppResult, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
+	VersionInfo,
+};
 use crate::{error, info, success, warn};
 use anyhow::anyhow;
 use colored::Colorize;
@@ -8,18 +13,20 @@ use unicode_width::UnicodeWidthStr;
 
 use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
-fn render_results(provider: ProviderId, results: &[AppResult]) {
-	// Pad `s` to `w` terminal columns, then color.
-	let pad = |s: &str, w: usize| format!("{s}{}", " ".repeat(w.saturating_sub(s.width())));
+// Pad `s` to `w` terminal columns, then color.
+fn pad(s: &str, w: usize) -> String {
+	format!("{s}{}", " ".repeat(w.saturating_sub(s.width())))
+}
 
+/// Width of the widest present value in a column, 0 if the column is all empty.
+fn col_width<'a, T>(rows: &'a [T], f: impl Fn(&'a T) -> Option<&'a str>) -> usize {
+	rows.iter().filter_map(f).map(str::width).max().unwrap_or(0)
+}
+
+fn render_results(provider: ProviderId, results: &[AppResult]) {
 	println!("{}", provider.as_str().cyan().bold());
-	let tw = results.iter().map(|r| r.title.width()).max().unwrap_or(0);
-	let vw = results
-		.iter()
-		.filter_map(|r| r.version.as_deref())
-		.map(str::width)
-		.max()
-		.unwrap_or(0);
+	let tw = col_width(results, |r| Some(r.title.as_str()));
+	let vw = col_width(results, |r| r.version.as_deref());
 	for r in results {
 		let mut line = format!("{} {}", "•".cyan().bold(), pad(&r.title, tw).bold());
 		if vw > 0 {
@@ -33,30 +40,55 @@ fn render_results(provider: ProviderId, results: &[AppResult]) {
 	}
 }
 
-pub(super) async fn search(
+fn render_versions(provider: ProviderId, list: &[VersionInfo]) {
+	println!("{}", provider.as_str().cyan().bold());
+	// Only pad the version column when a date follows it, else rows end in blanks.
+	let vw = match col_width(list, |v| v.uploaded.as_deref()) {
+		0 => 0,
+		_ => col_width(list, |v| Some(v.version.as_str())),
+	};
+	for v in list {
+		let mut line = format!("{} {}", "•".cyan().bold(), pad(&v.version, vw).bold());
+		if let Some(up) = &v.uploaded {
+			line.push_str(&format!("  {}", up.dimmed()));
+		}
+		println!("{line}");
+	}
+}
+
+/// Run `fetch` against every selected provider, rendering (or merging, for
+/// JSON) whatever each one returns. Errors are reported but don't stop the
+/// sweep; if nothing came back at all, the last one becomes the exit status.
+async fn fan_out<T, F, Fut>(
 	registry: &ProviderRegistry,
-	query: &str,
 	json: bool,
-) -> Result<(), AppError> {
-	let mut merged: Vec<AppResult> = Vec::new();
+	verb: &str,
+	mut fetch: F,
+	render: fn(ProviderId, &[T]),
+) -> Result<Vec<T>, Option<AppError>>
+where
+	F: FnMut(ProviderId) -> Fut,
+	Fut: Future<Output = Result<Vec<T>, ProviderFailure>>,
+{
+	let mut merged = Vec::new();
 	let mut hit = false;
-	let mut last: Option<AppError> = None;
+	let mut last = None;
 	for id in registry.names() {
 		if !json {
-			info!("searching {}...", id);
+			info!("{} {}...", verb, id);
 		}
-		match registry.search(id, query).await {
-			Ok(results) if results.is_empty() => {
+		match fetch(id).await {
+			Ok(rows) if rows.is_empty() => {
 				if !json {
 					warn!("{}: no results", id);
 				}
 			}
-			Ok(results) => {
+			Ok(rows) => {
 				hit = true;
 				if json {
-					merged.extend(results);
+					merged.extend(rows);
 				} else {
-					render_results(id, &results);
+					render(id, &rows);
 				}
 			}
 			Err(f) => {
@@ -67,18 +99,32 @@ pub(super) async fn search(
 			}
 		}
 	}
+	if hit { Ok(merged) } else { Err(last) }
+}
 
+pub(super) async fn search(
+	registry: &ProviderRegistry,
+	query: &str,
+	json: bool,
+) -> Result<(), AppError> {
+	let merged = fan_out(
+		registry,
+		json,
+		"searching",
+		|id| registry.search(id, query),
+		render_results,
+	)
+	.await
+	.map_err(|last| {
+		last.unwrap_or(AppError {
+			code: EXIT_NOT_FOUND,
+			source: anyhow!("no results for '{query}'"),
+		})
+	})?;
 	if json {
 		println!("{}", serde_json::to_string_pretty(&merged)?);
 	}
-	if hit {
-		Ok(())
-	} else {
-		Err(last.unwrap_or(AppError {
-			code: EXIT_NOT_FOUND,
-			source: anyhow!("no results for '{query}'"),
-		}))
-	}
+	Ok(())
 }
 
 pub(super) async fn versions(
@@ -86,14 +132,22 @@ pub(super) async fn versions(
 	pkg: &str,
 	json: bool,
 ) -> Result<(), AppError> {
-	let id = registry.top();
-	let list = registry.versions(id, pkg).await?;
+	let merged = fan_out(
+		registry,
+		json,
+		"listing versions from",
+		|id| registry.versions(id, pkg),
+		render_versions,
+	)
+	.await
+	.map_err(|last| {
+		last.unwrap_or(AppError {
+			code: EXIT_NOT_FOUND,
+			source: anyhow!("no versions for '{pkg}'"),
+		})
+	})?;
 	if json {
-		println!("{}", serde_json::to_string_pretty(&list)?);
-	} else {
-		for v in &list {
-			crate::print_message!("•", cyan, "{}  ({})", v.version, v.provider);
-		}
+		println!("{}", serde_json::to_string_pretty(&merged)?);
 	}
 	Ok(())
 }

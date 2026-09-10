@@ -83,31 +83,16 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 
 // --- versions ----------------------------------------------------------------
 
-pub struct VersionRow {
-	pub version: String,
-	pub version_code: Option<String>,
-}
-
 /// Parse `/<slug>/<pkg>/versions` — rows carry everything in `data-dt-*` attrs.
-pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
+pub fn parse_versions(html: &str) -> Result<Vec<String>, ProviderError> {
 	let doc = Html::parse_document(html);
 	let row = sel("div.ver_download_link[data-dt-version]");
 	let mut seen = std::collections::HashSet::new();
-	let rows: Vec<VersionRow> = doc
+	let rows: Vec<String> = doc
 		.select(&row)
 		.filter_map(|el| {
 			let version = clean_version(el.value().attr("data-dt-version")?);
-			if version.is_empty() || !seen.insert(version.clone()) {
-				return None;
-			}
-			Some(VersionRow {
-				version,
-				version_code: el
-					.value()
-					.attr("data-dt-versioncode")
-					.map(|s| s.trim().to_string())
-					.filter(|s| !s.is_empty()),
-			})
+			(!version.is_empty() && seen.insert(version.clone())).then_some(version)
 		})
 		.collect();
 	if rows.is_empty() {
@@ -214,12 +199,7 @@ mod tests {
 				.unwrap_or_else(|e| panic!("{app}: parse_versions: {e}"));
 			assert!(rows.len() > 3, "{app}: only {} versions", rows.len());
 			assert!(
-				rows.iter().all(|r| r.version_code.is_some()),
-				"{app}: a row has no version code"
-			);
-			assert!(
-				rows.iter()
-					.all(|r| !r.version.contains('(') && r.version.contains('.')),
+				rows.iter().all(|v| !v.contains('(') && v.contains('.')),
 				"{app}: a version string is malformed"
 			);
 		}

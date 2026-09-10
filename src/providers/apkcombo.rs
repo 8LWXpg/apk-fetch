@@ -90,7 +90,6 @@ impl Provider for ApkCombo {
 			.into_iter()
 			.map(|r| VersionInfo {
 				version: parse::version_token(&r.name),
-				version_code: None,
 				uploaded: r.uploaded,
 				provider: NAME,
 			})
