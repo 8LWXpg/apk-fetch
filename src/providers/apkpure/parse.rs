@@ -2,7 +2,7 @@ use crate::common::contract::ProviderError;
 use scraper::{Html, Selector};
 
 pub const BASE_URL: &str = "https://apkpure.com";
-/// Direct-download host: `{DL_URL}/b/{APK|XAPK}/{pkg}?version={v}` 302s to the file.
+/// Direct-download host: `{DL_URL}/b/{APK|XAPK}/{pkg}?versionCode={c}` 302s to the file.
 pub const DL_URL: &str = "https://d.apkpure.com";
 
 fn sel(s: &str) -> Selector {
@@ -17,8 +17,7 @@ fn text_of(el: scraper::ElementRef<'_>) -> String {
 		.join(" ")
 }
 
-/// apkpure sometimes formats a version as `2.6.2(20653)` — the trailing
-/// `(versionCode)` is noise for our purposes.
+/// apkpure sometimes formats a version as `2.6.2(20653)`
 fn clean_version(v: &str) -> String {
 	match v.trim().split_once('(') {
 		Some((name, _)) if !name.trim().is_empty() => name.trim().to_string(),
@@ -83,16 +82,24 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 
 // --- versions ----------------------------------------------------------------
 
-/// Parse `/<slug>/<pkg>/versions` — rows carry everything in `data-dt-*` attrs.
-pub fn parse_versions(html: &str) -> Result<Vec<String>, ProviderError> {
+pub struct VersionRow {
+	pub version: String,
+	/// Version code for download.
+	pub code: String,
+}
+
+/// Parse `/x/<pkg>/versions` — rows carry everything in `data-dt-*` attrs.
+pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 	let doc = Html::parse_document(html);
-	let row = sel("div.ver_download_link[data-dt-version]");
+	let row = sel("div.ver_download_link[data-dt-version][data-dt-versioncode]");
 	let mut seen = std::collections::HashSet::new();
-	let rows: Vec<String> = doc
+	let rows: Vec<VersionRow> = doc
 		.select(&row)
 		.filter_map(|el| {
 			let version = clean_version(el.value().attr("data-dt-version")?);
-			(!version.is_empty() && seen.insert(version.clone())).then_some(version)
+			let code = el.value().attr("data-dt-versioncode")?.trim().to_string();
+			(!version.is_empty() && !code.is_empty() && seen.insert(version.clone()))
+				.then_some(VersionRow { version, code })
 		})
 		.collect();
 	if rows.is_empty() {
@@ -101,9 +108,8 @@ pub fn parse_versions(html: &str) -> Result<Vec<String>, ProviderError> {
 	Ok(rows)
 }
 
-/// The latest version string from an app page — the main download button, else
-/// any `data-dt-version`. `None` if the page has no such marker (treat as
-/// not-found). May include a `(code)` suffix; that's apkpure's own formatting.
+/// The latest version string from an app page main download button, else first
+/// `data-dt-version`. `None` if the page has no such marker.
 pub fn latest_version(html: &str) -> Option<String> {
 	let doc = Html::parse_document(html);
 	let main = sel(".dt-main-download-btn[data-dt-version]");
@@ -115,8 +121,7 @@ pub fn latest_version(html: &str) -> Option<String> {
 		.filter(|s| !s.is_empty())
 }
 
-/// Loose match for a user-supplied `--version`: exact, or a leading dotted-segment
-/// prefix (`2.6` matches `2.6.2`, not `2.60`).
+/// Matches exact, or leading dotted-segment prefix.
 pub fn version_matches(version: &str, want: &str) -> bool {
 	version == want
 		|| version
@@ -124,18 +129,12 @@ pub fn version_matches(version: &str, want: &str) -> bool {
 			.is_some_and(|rest| rest.starts_with('.'))
 }
 
-fn pct(s: &str) -> String {
-	s.chars()
-		.map(|c| match c {
-			'A'..='Z' | 'a'..='z' | '0'..='9' | '.' | '-' | '_' | '~' => c.to_string(),
-			_ => format!("%{:02X}", c as u32),
-		})
-		.collect()
-}
-
-/// `{DL_URL}/b/APK/{pkg}?version={version}`. Pass `"latest"` when unknown.
-pub fn download_url(pkg: &str, version: &str) -> String {
-	format!("{DL_URL}/b/APK/{pkg}?version={}", pct(version))
+/// `{DL_URL}/b/APK/{pkg}?versionCode={code}`, or `?version=latest` when `code` is `None`.
+pub fn download_url(pkg: &str, code: Option<&str>) -> String {
+	match code {
+		Some(code) => format!("{DL_URL}/b/APK/{pkg}?versionCode={code}"),
+		None => format!("{DL_URL}/b/APK/{pkg}?version=latest"),
+	}
 }
 
 #[cfg(test)]
@@ -199,8 +198,14 @@ mod tests {
 				.unwrap_or_else(|e| panic!("{app}: parse_versions: {e}"));
 			assert!(rows.len() > 3, "{app}: only {} versions", rows.len());
 			assert!(
-				rows.iter().all(|v| !v.contains('(') && v.contains('.')),
+				rows.iter()
+					.all(|r| !r.version.contains('(') && r.version.contains('.')),
 				"{app}: a version string is malformed"
+			);
+			assert!(
+				rows.iter()
+					.all(|r| r.code.chars().all(|c| c.is_ascii_digit())),
+				"{app}: a versionCode is not numeric"
 			);
 		}
 	}
@@ -216,8 +221,12 @@ mod tests {
 	#[test]
 	fn download_url_shape() {
 		assert_eq!(
-			download_url("org.mozilla.firefox", "155.0.1"),
-			"https://d.apkpure.com/b/APK/org.mozilla.firefox?version=155.0.1"
+			download_url("org.mozilla.firefox", Some("2015985534")),
+			"https://d.apkpure.com/b/APK/org.mozilla.firefox?versionCode=2015985534"
+		);
+		assert_eq!(
+			download_url("org.mozilla.firefox", None),
+			"https://d.apkpure.com/b/APK/org.mozilla.firefox?version=latest"
 		);
 	}
 }

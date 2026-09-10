@@ -1,6 +1,6 @@
 //! APKPure provider. APKPure is package-id-addressable — `/x/{pkg}` resolves to
-//! the app page and `d.apkpure.com/b/APK/{pkg}?version=...` 302s straight to the
-//! APK — so there's no search-walk to reach a download.
+//! the app page and `d.apkpure.com/b/APK/{pkg}?versionCode=...` 302s straight to
+//! the APK — so there's no search-walk to reach a download.
 //!
 //! `arch` is accepted but not honoured: APKPure's web endpoint serves one build
 //! per app regardless of ABI, so resolved `arch` is left `None`.
@@ -64,7 +64,7 @@ impl Provider for ApkPure {
 		Ok(parse::parse_versions(&html)?
 			.into_iter()
 			.map(|r| VersionInfo {
-				version: r,
+				version: r.version,
 				uploaded: None,
 				provider: NAME,
 			})
@@ -77,23 +77,25 @@ impl Provider for ApkPure {
 		version: Option<&str>,
 		_arch: &str,
 	) -> Result<DownloadTarget, ProviderError> {
-		// `endpoint_version` is what we hand apkpure; `label` is for the filename.
-		// A pinned version is confirmed against the versions list (and normalised
-		// to apkpure's own string) so a typo / missing build fails over instead of
-		// silently downloading "latest". Unpinned: ask for "latest" but resolve the
-		// real number for the name. Either GET also 404s -> NotFound for an unknown
-		// package.
-		let (endpoint_version, label) = match version {
+		// `code` is what we hand apkpure (its `versionCode`; `None` means "latest");
+		// `label` is for the filename. A pinned version is looked up in the versions
+		// list both to get that code and so a typo / missing build fails over
+		// instead of silently downloading "latest". Unpinned: ask for "latest" but
+		// resolve the real number for the name. Either GET also 404s -> NotFound for
+		// an unknown package.
+		let (code, label) = match version {
 			Some(want) => {
 				let html = self
 					.fetcher
 					.get_text(&format!("{}/x/{}/versions", parse::BASE_URL, pkg))
 					.await?;
-				let v = parse::parse_versions(&html)?
+				let r = parse::parse_versions(&html)?
 					.into_iter()
-					.find(|v| parse::version_matches(v, want))
-					.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?;
-				(v.clone(), v)
+					.find(|r| parse::version_matches(&r.version, want))
+					.ok_or_else(|| {
+						ProviderError::NotFound(format!("no version {want} for {pkg}"))
+					})?;
+				(Some(r.code), r.version)
 			}
 			None => {
 				let html = self
@@ -102,12 +104,12 @@ impl Provider for ApkPure {
 					.await?;
 				let label = parse::latest_version(&html)
 					.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))?;
-				("latest".to_string(), label)
+				(None, label)
 			}
 		};
 
 		Ok(DownloadTarget {
-			url: parse::download_url(pkg, &endpoint_version),
+			url: parse::download_url(pkg, code.as_deref()),
 			version: Some(label),
 			arch: None,
 			provider: NAME,
