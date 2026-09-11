@@ -1,21 +1,11 @@
 use crate::common::contract::ProviderError;
-use scraper::{Html, Selector};
+use crate::providers::scrape::{parse_date, sel, text_of};
+use chrono::NaiveDate;
+use scraper::Html;
 
 pub const BASE_URL: &str = "https://apkpure.com";
 /// Direct-download host: `{DL_URL}/b/{APK|XAPK}/{pkg}?versionCode={c}` 302s to the file.
 pub const DL_URL: &str = "https://d.apkpure.com";
-
-fn sel(s: &str) -> Selector {
-	Selector::parse(s).unwrap_or_else(|e| panic!("invalid CSS selector {s:?}: {e}"))
-}
-
-fn text_of(el: scraper::ElementRef<'_>) -> String {
-	el.text()
-		.collect::<String>()
-		.split_whitespace()
-		.collect::<Vec<_>>()
-		.join(" ")
-}
 
 /// apkpure sometimes formats a version as `2.6.2(20653)`
 fn clean_version(v: &str) -> String {
@@ -41,7 +31,6 @@ fn package_from_href(href: &str) -> Option<String> {
 pub struct SearchHit {
 	pub package: String,
 	pub title: String,
-	pub developer: Option<String>,
 }
 
 /// Parse `/search?q=...`. Covers both result shapes: the top "brand" match
@@ -50,7 +39,6 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 	let doc = Html::parse_document(html);
 	let anchor = sel("a[href*=\"apkpure.com/\"]");
 	let p1 = sel("p.p1");
-	let p2 = sel("p.p2");
 
 	let mut seen = std::collections::HashSet::new();
 	let mut hits = Vec::new();
@@ -68,11 +56,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 		if title.is_empty() || !seen.insert(package.clone()) {
 			continue;
 		}
-		hits.push(SearchHit {
-			package,
-			title,
-			developer: a.select(&p2).next().map(text_of).filter(|s| !s.is_empty()),
-		});
+		hits.push(SearchHit { package, title });
 	}
 	if hits.is_empty() {
 		return Err(ProviderError::NotFound("search returned nothing".into()));
@@ -86,20 +70,31 @@ pub struct VersionRow {
 	pub version: String,
 	/// Version code for download.
 	pub code: String,
+	pub uploaded: NaiveDate,
 }
 
 /// Parse `/x/<pkg>/versions` — rows carry everything in `data-dt-*` attrs.
 pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 	let doc = Html::parse_document(html);
 	let row = sel("div.ver_download_link[data-dt-version][data-dt-versioncode]");
+	let date = sel("span.update-on");
 	let mut seen = std::collections::HashSet::new();
 	let rows: Vec<VersionRow> = doc
 		.select(&row)
 		.filter_map(|el| {
 			let version = clean_version(el.value().attr("data-dt-version")?);
 			let code = el.value().attr("data-dt-versioncode")?.trim().to_string();
-			(!version.is_empty() && !code.is_empty() && seen.insert(version.clone()))
-				.then_some(VersionRow { version, code })
+			if version.is_empty() || code.is_empty() || !seen.insert(version.clone()) {
+				return None;
+			}
+			// `Apr 10, 2025`
+			let date = el.select(&date).next().map(text_of).unwrap_or_default();
+			let uploaded = parse_date("apkpure", &version, &date, "%b %d, %Y")?;
+			Some(VersionRow {
+				version,
+				code,
+				uploaded,
+			})
 		})
 		.collect();
 	if rows.is_empty() {
@@ -119,14 +114,6 @@ pub fn latest_version(html: &str) -> Option<String> {
 		.find_map(|el| el.value().attr("data-dt-version"))
 		.map(clean_version)
 		.filter(|s| !s.is_empty())
-}
-
-/// Matches exact, or leading dotted-segment prefix.
-pub fn version_matches(version: &str, want: &str) -> bool {
-	version == want
-		|| version
-			.strip_prefix(want)
-			.is_some_and(|rest| rest.starts_with('.'))
 }
 
 /// `{DL_URL}/b/APK/{pkg}?versionCode={code}`, or `?version=latest` when `code` is `None`.
@@ -208,25 +195,5 @@ mod tests {
 				"{app}: a versionCode is not numeric"
 			);
 		}
-	}
-
-	#[test]
-	fn version_matches_is_boundary_aware() {
-		assert!(version_matches("2.6.2", "2.6.2"));
-		assert!(version_matches("2.6.2", "2.6"));
-		assert!(!version_matches("2.60", "2.6"));
-		assert!(!version_matches("12.6.2", "2.6"));
-	}
-
-	#[test]
-	fn download_url_shape() {
-		assert_eq!(
-			download_url("org.mozilla.firefox", Some("2015985534")),
-			"https://d.apkpure.com/b/APK/org.mozilla.firefox?versionCode=2015985534"
-		);
-		assert_eq!(
-			download_url("org.mozilla.firefox", None),
-			"https://d.apkpure.com/b/APK/org.mozilla.firefox?version=latest"
-		);
 	}
 }

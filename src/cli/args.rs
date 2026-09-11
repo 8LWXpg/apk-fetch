@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::builder::styling;
 use clap::{Parser, Subcommand};
 
-use crate::common::ProviderId;
+use crate::common::{Arch, ProviderId};
 
 #[derive(Parser)]
 #[command(
@@ -60,9 +60,10 @@ pub(super) enum Command {
 		/// repeated). Default: the built-in priority order.
 		#[arg(long, value_delimiter = ',')]
 		priority: Vec<ProviderId>,
-		/// Preferred ABI; providers fall back to a universal build if unavailable.
+		/// Preferred ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal);
+		/// providers fall back to a universal build if unavailable.
 		#[arg(long, default_value = "arm64-v8a")]
-		arch: String,
+		arch: Arch,
 		/// Output directory.
 		#[arg(long, default_value = ".")]
 		output: PathBuf,

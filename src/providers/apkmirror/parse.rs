@@ -1,59 +1,27 @@
-use crate::common::contract::ProviderError;
-use scraper::{Html, Selector};
+use crate::common::contract::{Arch, ProviderError, VersionInfo};
+use crate::providers::scrape::{Variant, abs, parse_date, parse_err, sel, text_of, version_token};
+use scraper::Html;
 
 pub const BASE_URL: &str = "https://www.apkmirror.com";
-
-// --- selectors ------------------------------------------------------------------
-const SEARCH_RESULT_LINK: &str = "h5.appRowTitle a.fontBlack";
-const LIST_WIDGET: &str = "div.listWidget";
-const ALL_VERSIONS_ANCHOR: &str = r#"a[name="all_versions"]"#;
-const VERSION_ROW: &str = "div.appRow";
-const ROW_TITLE_LINK: &str = "h5.appRowTitle a.fontBlack";
-const ROW_DATE: &str = "span.dateyear_utc";
-const VARIANTS_TABLE_ROW: &str = "div.variants-table div.table-row";
-const CELL: &str = "div.table-cell";
-const VARIANT_LINK: &str = "a.accent_color";
-const VARIANT_BADGE: &str = "span.apkm-badge";
-const DOWNLOAD_BUTTON: &str = "a.downloadButton";
-const FINAL_LINK: &str = "a#download-link";
-const FINAL_LINK_FALLBACK: &str = "div.card-with-tabs a[href]";
-
-fn sel(s: &str) -> Selector {
-	Selector::parse(s).unwrap_or_else(|e| panic!("invalid CSS selector {s:?}: {e}"))
-}
-
-fn parse_err(msg: impl Into<String>) -> ProviderError {
-	ProviderError::ParseError(msg.into())
-}
-
-pub fn abs(href: &str) -> String {
-	if href.starts_with("http") {
-		href.to_string()
-	} else if let Some(rest) = href.strip_prefix('/') {
-		format!("{BASE_URL}/{rest}")
-	} else {
-		format!("{BASE_URL}/{href}")
-	}
-}
-
-fn text_of(el: scraper::ElementRef<'_>) -> String {
-	el.text()
-		.collect::<String>()
-		.split_whitespace()
-		.collect::<Vec<_>>()
-		.join(" ")
-}
 
 // --- search --------------------------------------------------------------------
 
 pub struct SearchHit {
+	/// `"{App name} {version}"`, e.g. `"YouTube 21.36.45"`.
 	pub title: String,
 	/// Release-page URL (absolute).
 	pub release_url: String,
 }
 
-/// Parse the `/?post_type=app_release&s=...` results page, in document order.
-pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
+impl SearchHit {
+	pub fn version(&self) -> String {
+		version_token(&self.title)
+	}
+}
+
+/// Parse the `/?post_type=app_release&s=...` results page for `query`, best
+/// match first (see [`rank`]); ties keep the site's newest-first order.
+pub fn parse_search(html: &str, query: &str) -> Result<Vec<SearchHit>, ProviderError> {
 	// A no-results page still renders a "you might also like" grid of unrelated
 	// apps, so an empty selector match isn't enough — check the marker.
 	if html.contains("No results found matching your query") {
@@ -66,77 +34,91 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 		None => html,
 	};
 	let doc = Html::parse_document(html);
-	let link = sel(SEARCH_RESULT_LINK);
-	let hits: Vec<SearchHit> = doc
+	let link = sel("h5.appRowTitle a.fontBlack");
+	let mut hits: Vec<SearchHit> = doc
 		.select(&link)
 		.filter_map(|a| {
 			let href = a.value().attr("href")?;
 			Some(SearchHit {
 				title: text_of(a),
-				release_url: abs(href),
+				release_url: abs(BASE_URL, href),
 			})
 		})
 		.collect();
 	if hits.is_empty() {
 		return Err(ProviderError::NotFound("search returned nothing".into()));
 	}
+	hits.sort_by_key(|h| rank(h, query));
 	Ok(hits)
 }
 
-/// How well a result title matches the query: 0 = exact / whole-word hit, 3 =
-/// substring-only or worse. APKMirror's own ranking is a blind substring match
-/// (`s=line` floats `Lineage2M` and `Korean Air` above `LINE`), so the provider
-/// stable-sorts search results on this.
-pub fn relevance(title: &str, query: &str) -> u8 {
-	let (t, q) = (title.to_lowercase(), query.trim().to_lowercase());
+fn tokens(s: &str) -> impl Iterator<Item = &str> {
+	s.split(|c: char| !c.is_alphanumeric())
+		.filter(|t| !t.is_empty())
+}
+
+/// How well one query token is matched by one title token; 0 = exact.
+fn token_match(q: &str, t: &str) -> u8 {
 	if t == q {
-		return 0;
-	}
-	let words = || {
-		t.split(|c: char| !c.is_alphanumeric())
-			.filter(|s| !s.is_empty())
-	};
-	if words().any(|w| w == q) {
 		0
-	} else if t.starts_with(&q) || words().any(|w| w.starts_with(&q)) {
+	} else if t.starts_with(q) {
 		1
-	} else if t.contains(&q) {
+	} else if t.contains(q) {
 		2
 	} else {
 		3
 	}
 }
 
-/// `/apk/{org}/{repo}/{repo}-x-y-release/` -> `/apk/{org}/{repo}/` (absolute).
-pub fn app_page_from_release(release_url: &str) -> Option<String> {
-	let path = release_url.strip_prefix(BASE_URL)?;
-	let mut segs = path.split('/').filter(|s| !s.is_empty());
-	let apk = segs.next()?; // "apk"
+/// Sort key, lower is better. APKMirror matches the query as a blind substring
+/// of title / developer / description and lists one row per release, newest
+/// first, across every listing that shares a package id (phone, `-wear-os`,
+/// `-beta`, ...). Two terms, in priority order:
+///
+/// - `coverage`: for each query token, its best [`token_match`] against the
+///   version-stripped title, summed — so every word of `youtube music` counts
+///   and an off-title hit sorts last.
+/// - `extra`: repo-slug tokens no query token equals. The phone app is the bare
+///   slug and each spin-off appends to it, so `youtube` < `youtube-beta` <
+///   `youtube-wear-os`; naming the channel (`youtube beta`) lifts its penalty.
+///   A package-id query ties on `coverage` and this term alone picks the app.
+fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
+	let q = query.to_lowercase();
+	let title = strip_version(&hit.title).to_lowercase();
+	let coverage = tokens(&q)
+		.map(|qt| {
+			tokens(&title)
+				.map(|tt| token_match(qt, tt))
+				.min()
+				.unwrap_or(3)
+		})
+		.sum();
+	let repo = app_slug(&hit.release_url).map_or("", |s| s.rsplit('/').next().unwrap_or(s));
+	let extra = tokens(repo)
+		.filter(|st| !tokens(&q).any(|qt| qt == *st))
+		.count() as u8;
+	(coverage, extra)
+}
+
+/// `{BASE}/apk/{org}/{repo}/{repo}-x-y-release/` -> `{org}/{repo}`.
+pub fn app_slug(release_url: &str) -> Option<&str> {
+	let path = release_url.strip_prefix(BASE_URL)?.strip_prefix("/apk/")?;
+	let mut segs = path.split('/');
 	let org = segs.next()?;
 	let repo = segs.next()?;
-	if apk != "apk" {
-		return None;
-	}
-	Some(format!("{BASE_URL}/{apk}/{org}/{repo}/"))
+	(!org.is_empty() && !repo.is_empty()).then(|| &path[..org.len() + 1 + repo.len()])
 }
 
 // --- versions -----------------------------------------------------------------
 
-pub struct VersionRow {
-	pub title: String,
-	pub version_page_url: String,
-	/// Raw `data-utcdate` string, e.g. `09/7/2026 02:34 UTC`.
-	pub uploaded: Option<String>,
-}
-
 /// Parse the "All versions" widget on an app page.
-pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
+pub fn parse_versions(html: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 	let doc = Html::parse_document(html);
-	let widget_sel = sel(LIST_WIDGET);
-	let anchor_sel = sel(ALL_VERSIONS_ANCHOR);
-	let row_sel = sel(VERSION_ROW);
-	let title_sel = sel(ROW_TITLE_LINK);
-	let date_sel = sel(ROW_DATE);
+	let widget_sel = sel("div.listWidget");
+	let anchor_sel = sel(r#"a[name="all_versions"]"#);
+	let row_sel = sel("div.appRow");
+	let title_sel = sel("h5.appRowTitle a.fontBlack");
+	let date_sel = sel("span.dateyear_utc");
 
 	// scraper has no :has(), so find the listWidget that contains the anchor.
 	let widget = doc
@@ -144,21 +126,20 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 		.find(|w| w.select(&anchor_sel).next().is_some())
 		.ok_or_else(|| parse_err("no 'all versions' widget on app page"))?;
 
-	let rows: Vec<VersionRow> = widget
+	let rows: Vec<VersionInfo> = widget
 		.select(&row_sel)
 		.filter_map(|row| {
 			let a = row.select(&title_sel).next()?;
-			let href = a.value().attr("href")?;
-			let uploaded = row
+			a.value().attr("href")?; // skip rows whose title isn't a real link
+			let version = version_token(&text_of(a));
+			// `09/7/2026 02:34 UTC`
+			let date = row
 				.select(&date_sel)
 				.next()
 				.and_then(|d| d.value().attr("data-utcdate"))
-				.map(|s| s.trim().to_string());
-			Some(VersionRow {
-				title: text_of(a),
-				version_page_url: abs(href),
-				uploaded,
-			})
+				.unwrap_or("");
+			let uploaded = parse_date("apkmirror", &version, date, "%m/%d/%Y %H:%M UTC")?;
+			Some(VersionInfo { version, uploaded })
 		})
 		.collect();
 	if rows.is_empty() {
@@ -167,49 +148,34 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 	Ok(rows)
 }
 
-/// Split a trailing version number off a search-result title:
-/// `"LINE: Calls & Messages 26.14.0"` -> `("LINE: Calls & Messages", Some("26.14.0"))`.
-/// Leaves the title whole when the tail isn't a dotted number.
-pub fn split_title_version(title: &str) -> (String, Option<String>) {
+/// Drop the version number from a search-result title:
+/// `"LINE: Calls & Messages 26.14.0"` -> `"LINE: Calls & Messages"`.
+/// Leaves the title whole when no token is a dotted number.
+pub fn strip_version(title: &str) -> String {
 	let tok = version_token(title);
-	let looks_ver = tok.contains('.') && tok.starts_with(|c: char| c.is_ascii_digit());
-	match title
-		.strip_suffix(&tok)
-		.filter(|_| looks_ver && tok != title)
-	{
-		Some(head) => (head.trim().to_string(), Some(tok)),
-		None => (title.to_string(), None),
+	if tok == title || !(tok.contains('.') && tok.starts_with(|c: char| c.is_ascii_digit())) {
+		return title.to_string();
 	}
-}
-
-/// Best-effort: last whitespace token that looks like a version number.
-pub fn version_token(title: &str) -> String {
+	// The version isn't always last ("YouTube 21.36.42 beta"), so drop the token
+	// wherever it sits rather than stripping a suffix.
 	title
 		.split_whitespace()
-		.rev()
-		.find(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()))
-		.unwrap_or(title)
-		.to_string()
+		.filter(|t| *t != tok)
+		.collect::<Vec<_>>()
+		.join(" ")
 }
 
 // --- variants -----------------------------------------------------------------
 
-pub struct Variant {
-	pub version: String,
-	pub arch: String,
-	/// "APK" or "BUNDLE".
-	pub kind: String,
-	pub download_page_url: String,
-}
-
 /// Parse the `.variants-table` on a version page. Empty vec (not an error) if the
 /// table is absent — caller may have landed straight on a download page.
+/// [`Variant::url`] is the variant's download page.
 pub fn parse_variants(html: &str) -> Vec<Variant> {
 	let doc = Html::parse_document(html);
-	let row_sel = sel(VARIANTS_TABLE_ROW);
-	let cell_sel = sel(CELL);
-	let link_sel = sel(VARIANT_LINK);
-	let badge_sel = sel(VARIANT_BADGE);
+	let row_sel = sel("div.variants-table div.table-row");
+	let cell_sel = sel("div.table-cell");
+	let link_sel = sel("a.accent_color");
+	let badge_sel = sel("span.apkm-badge");
 
 	doc.select(&row_sel)
 		.skip(1) // header row
@@ -217,50 +183,25 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 			let cells: Vec<_> = row.select(&cell_sel).collect();
 			let link = cells.first()?.select(&link_sel).next()?;
 			let href = link.value().attr("href")?;
-			let kind = cells
+			// Badge is "APK" or "BUNDLE"; a missing badge is treated as a bundle
+			// so it never outranks a labelled APK.
+			let bundle = !cells
 				.first()?
 				.select(&badge_sel)
 				.next()
-				.map(text_of)
-				.unwrap_or_default();
+				.is_some_and(|b| text_of(b).eq_ignore_ascii_case("apk"));
 			Some(Variant {
 				version: text_of(link),
-				kind,
-				arch: cells.get(1).map(|c| text_of(*c)).unwrap_or_default(),
-				download_page_url: abs(href),
+				bundle,
+				// No ABI cell means the build runs anywhere.
+				arch: cells
+					.get(1)
+					.and_then(|c| text_of(*c).parse().ok())
+					.unwrap_or(Arch::all()),
+				url: abs(BASE_URL, href),
 			})
 		})
 		.collect()
-}
-
-fn arch_tokens(v: &Variant) -> Vec<String> {
-	v.arch
-		.to_ascii_lowercase()
-		.split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
-		.filter(|t| !t.is_empty())
-		.map(str::to_string)
-		.collect()
-}
-
-fn is_universal(v: &Variant) -> bool {
-	let a = v.arch.to_ascii_lowercase();
-	a.is_empty() || a.contains("universal") || a.contains("noarch") || a == "all"
-}
-
-/// Pick a variant for `arch` (e.g. `arm64-v8a`): exact-arch APK, else a universal
-/// APK, else any APK, else an exact-arch bundle, else the first row.
-// ponytail: no `--dpi`; add it here + in the trait if screen-density builds matter.
-pub fn choose_variant<'a>(variants: &'a [Variant], arch: &str) -> Option<&'a Variant> {
-	let want = arch.to_ascii_lowercase();
-	let is_apk = |v: &&Variant| v.kind.eq_ignore_ascii_case("APK");
-	let arch_match = |v: &&Variant| arch_tokens(v).contains(&want);
-	variants
-		.iter()
-		.find(|v| is_apk(v) && arch_match(v))
-		.or_else(|| variants.iter().find(|v| is_apk(v) && is_universal(v)))
-		.or_else(|| variants.iter().find(is_apk))
-		.or_else(|| variants.iter().find(arch_match))
-		.or_else(|| variants.first())
 }
 
 // --- download chain ----------------------------------------------------------
@@ -268,19 +209,19 @@ pub fn choose_variant<'a>(variants: &'a [Variant], arch: &str) -> Option<&'a Var
 /// Download page -> the keyed `a.downloadButton` href (absolute).
 pub fn parse_download_button(html: &str) -> Result<String, ProviderError> {
 	let doc = Html::parse_document(html);
-	doc.select(&sel(DOWNLOAD_BUTTON))
+	doc.select(&sel("a.downloadButton"))
 		.find_map(|a| a.value().attr("href"))
-		.map(abs)
+		.map(|h| abs(BASE_URL, h))
 		.ok_or_else(|| parse_err("no download button on download page"))
 }
 
 /// "Your download is starting..." page -> the actual APK URL (absolute).
 pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 	let doc = Html::parse_document(html);
-	doc.select(&sel(FINAL_LINK))
-		.chain(doc.select(&sel(FINAL_LINK_FALLBACK)))
+	doc.select(&sel("a#download-link"))
+		.chain(doc.select(&sel("div.card-with-tabs a[href]")))
 		.find_map(|a| a.value().attr("href"))
-		.map(abs)
+		.map(|h| abs(BASE_URL, h))
 		.ok_or_else(|| parse_err("no final download link on 'starting' page"))
 }
 
@@ -288,6 +229,7 @@ pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 mod tests {
 	use super::*;
 	use crate::providers::fixtures::{app_dirs, read};
+	use crate::providers::scrape::choose_variant;
 
 	#[test]
 	fn search_pages_parse() {
@@ -299,14 +241,20 @@ mod tests {
 			// "Popular / Latest Uploads" widgets further down the page.
 			if html.contains("No results found matching your query") {
 				assert!(
-					matches!(parse_search(&html), Err(ProviderError::NotFound(_))),
+					matches!(parse_search(&html, &app), Err(ProviderError::NotFound(_))),
 					"{app}: no-results page didn't parse as NotFound"
 				);
 				continue;
 			}
 
-			let hits = parse_search(&html).unwrap_or_else(|e| panic!("{app}: {e}"));
-			assert!(!hits.is_empty(), "{app}: empty hit list");
+			let hits = parse_search(&html, &app).unwrap_or_else(|e| panic!("{app}: {e}"));
+			// First hit is the phone app, not the automotive/wear spin-off that
+			// uploaded last.
+			assert!(
+				hits[0].release_url.contains(&format!("/{app}/{app}-")),
+				"{app}: picked {}",
+				hits[0].release_url
+			);
 			for h in &hits {
 				assert!(h.release_url.contains("/apk/"), "{app}: {}", h.release_url);
 				assert!(
@@ -329,37 +277,22 @@ mod tests {
 			let rows = parse_versions(&read(&dir, "app.html"))
 				.unwrap_or_else(|e| panic!("{app}: parse_versions: {e}"));
 			assert!(!rows.is_empty(), "{app}: no version rows");
-			assert!(rows[0].version_page_url.contains("-release/"), "{app}");
 			assert!(
 				rows.iter().any(|r| {
-					let t = version_token(&r.title);
-					t.contains('.') && t.starts_with(|c: char| c.is_ascii_digit())
+					r.version.contains('.') && r.version.starts_with(|c: char| c.is_ascii_digit())
 				}),
 				"{app}: no release-number-shaped versions"
-			);
-			assert!(
-				rows.iter()
-					.any(|r| r.uploaded.as_deref().is_some_and(|d| d.contains("UTC"))),
-				"{app}: no upload dates parsed"
 			);
 
 			let variants = parse_variants(&read(&dir, "version.html"));
 			assert!(!variants.is_empty(), "{app}: no variant rows");
 			for v in &variants {
-				assert!(
-					v.download_page_url.contains("-download/"),
-					"{app}: {}",
-					v.download_page_url
-				);
+				assert!(v.url.contains("-download/"), "{app}: {}", v.url);
 			}
-			let picked = choose_variant(&variants, "arm64-v8a").expect("a variant");
 			// If the app publishes any plain APK, arch selection must land on one.
-			if variants.iter().any(|v| v.kind.eq_ignore_ascii_case("APK")) {
-				assert!(
-					picked.kind.eq_ignore_ascii_case("APK"),
-					"{app}: picked {:?}",
-					picked.kind
-				);
+			let picked = choose_variant(&variants, Arch::ARM64_V8A).expect("a variant");
+			if variants.iter().any(|v| !v.bundle) {
+				assert!(!picked.bundle, "{app}: picked a bundle");
 			}
 
 			let btn = parse_download_button(&read(&dir, "download-page.html"))
@@ -374,80 +307,73 @@ mod tests {
 		}
 	}
 
-	fn variant(kind: &str, arch: &str) -> Variant {
-		Variant {
-			version: "1.0".into(),
-			arch: arch.into(),
-			kind: kind.into(),
-			download_page_url: "https://x/-download/".into(),
+	#[test]
+	fn derives_app_slug() {
+		assert_eq!(
+			app_slug("https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/"),
+			Some("mozilla/firefox")
+		);
+		assert_eq!(app_slug("https://www.apkmirror.com/apk/mozilla/"), None);
+		assert_eq!(app_slug("https://elsewhere/apk/a/b/"), None);
+	}
+
+	#[test]
+	fn strips_version_from_any_position() {
+		assert_eq!(
+			strip_version("LINE: Calls & Messages 26.14.0"),
+			"LINE: Calls & Messages"
+		);
+		// version is not the last token
+		assert_eq!(strip_version("YouTube 21.36.42 beta"), "YouTube beta");
+		// no dotted number -> title kept whole
+		assert_eq!(strip_version("Some App"), "Some App");
+		assert_eq!(strip_version("2nd Line"), "2nd Line");
+	}
+
+	fn hit(title: &str, repo: &str) -> SearchHit {
+		SearchHit {
+			title: title.into(),
+			release_url: format!("{BASE_URL}/apk/org/{repo}/{repo}-1-release/"),
 		}
 	}
 
 	#[test]
-	fn choose_variant_prefers_apk_then_exact_arch() {
-		let vs = vec![
-			variant("BUNDLE", "arm64-v8a"),
-			variant("APK", "armeabi-v7a"),
-			variant("APK", "arm64-v8a"),
-			variant("APK", "universal"),
-		];
-		// exact-arch APK wins over an arch-matching bundle and other APKs
-		assert_eq!(choose_variant(&vs, "arm64-v8a").unwrap().arch, "arm64-v8a");
-		assert_eq!(
-			choose_variant(&vs, "armeabi-v7a").unwrap().arch,
-			"armeabi-v7a"
+	fn rank_covers_query_tokens_then_penalises_slug_extras() {
+		let r = |title: &str, repo: &str, q: &str| rank(&hit(title, repo), q);
+		// coverage rungs: whole word < prefix < substring < absent
+		assert!(
+			r("LINE Camera 1.0", "line-camera", "line") < r("Lineage2M 1.0", "lineage2m", "line")
 		);
-		// no exact match -> universal APK, never the bundle
-		let picked = choose_variant(&vs, "x86").unwrap();
-		assert_eq!(picked.kind, "APK");
-		assert_eq!(picked.arch, "universal");
-
-		// bundle-only app: arch match on the bundle beats an off-arch bundle
-		let bundles = vec![
-			variant("BUNDLE", "universal"),
-			variant("BUNDLE", "arm64-v8a"),
-		];
-		assert_eq!(
-			choose_variant(&bundles, "arm64-v8a").unwrap().arch,
-			"arm64-v8a"
+		assert!(
+			r("Lineage2M 1.0", "lineage2m", "line")
+				< r("Airline Manager", "airline-manager", "line")
 		);
-	}
-
-	#[test]
-	fn derives_app_page() {
-		assert_eq!(
-			app_page_from_release(
-				"https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/"
-			)
-			.unwrap(),
-			"https://www.apkmirror.com/apk/mozilla/firefox/"
+		assert!(
+			r("Airline Manager", "airline-manager", "line")
+				< r("Korean Air My", "korean-air-my", "line")
 		);
-	}
-
-	#[test]
-	fn version_token_extracts_number() {
+		// every query token counts, order-free; the version token never does
 		assert_eq!(
-			version_token("Firefox Fast & Private Browser 155.0.1"),
-			"155.0.1"
+			r("YouTube Music 9.3", "youtube-music", "youtube music"),
+			(0, 0)
 		);
-	}
-
-	#[test]
-	fn splits_trailing_version() {
-		assert_eq!(
-			split_title_version("LINE: Calls & Messages 26.14.0"),
-			("LINE: Calls & Messages".into(), Some("26.14.0".into()))
+		assert_eq!(r("Music - YouTube", "youtube-music", "youtube music").0, 0);
+		assert_eq!(r("YouTube 21.3", "youtube", "youtube music").0, 3);
+		// package-id query: coverage ties, uncovered slug tokens pick the phone app
+		let pkg = "com.google.android.youtube";
+		let phone = r("YouTube 1.0", "youtube", pkg);
+		let beta = r("YouTube 1.2 beta", "youtube-beta", pkg);
+		let wear = r("YouTube 1.1", "youtube-wear-os", pkg);
+		assert!(phone < beta && beta < wear);
+		// asking for the channel lifts its penalty; `dev` in a package id is a
+		// token, not a substring, so `com.devhd.x` doesn't pick `-dev`
+		assert!(
+			r("YouTube beta", "youtube-beta", "youtube beta")
+				< r("YouTube", "youtube", "youtube beta")
 		);
-		// no dotted tail -> title kept whole
-		assert_eq!(split_title_version("Some App"), ("Some App".into(), None));
-		assert_eq!(split_title_version("2nd Line"), ("2nd Line".into(), None));
-	}
-
-	#[test]
-	fn relevance_ranks_whole_word_over_substring() {
-		assert_eq!(relevance("LINE: Calls & Messages", "line"), 0);
-		assert_eq!(relevance("LINE", "line"), 0);
-		assert!(relevance("Lineage2M", "line") > relevance("LINE Camera", "line"));
-		assert_eq!(relevance("Korean Air My", "line"), 3);
+		assert!(
+			r("Feedly", "feedly", "com.devhd.feedly")
+				< r("Feedly", "feedly-dev", "com.devhd.feedly")
+		);
 	}
 }

@@ -25,7 +25,7 @@ pub(crate) async fn dispatch(cli: Cli) -> Result<(), AppError> {
 				&registry,
 				&package_id,
 				version.as_deref(),
-				&arch,
+				arch,
 				&output,
 				cli.json,
 			)
@@ -60,17 +60,21 @@ fn selection(cmd: &Command) -> Vec<ProviderId> {
 	}
 }
 
+impl From<&ProviderId> for Box<dyn Provider> {
+	fn from(id: &ProviderId) -> Self {
+		match id {
+			ProviderId::Apkmirror => Box::new(ApkMirror::default()),
+			ProviderId::Apkpure => Box::new(ApkPure::default()),
+			ProviderId::Apkcombo => Box::new(ApkCombo::default()),
+		}
+	}
+}
+
 /// Build [`ProviderRegistry`] in struct `impl` would cause circular import.
 fn build_registry(order: &[ProviderId]) -> ProviderRegistry {
 	order
 		.iter()
-		.map(|id| -> Box<dyn Provider> {
-			match id {
-				ProviderId::Apkmirror => Box::new(ApkMirror::new()),
-				ProviderId::Apkpure => Box::new(ApkPure::new()),
-				ProviderId::Apkcombo => Box::new(ApkCombo::new()),
-			}
-		})
+		.map(<Box<dyn Provider>>::from)
 		.collect::<Vec<_>>()
 		.into()
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 use std::future::Future;
 
 use crate::common::{
-	AppResult, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
+	AppResult, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
 	VersionInfo,
 };
 use crate::{error, info, success, warn};
@@ -26,15 +26,8 @@ fn col_width<'a, T>(rows: &'a [T], f: impl Fn(&'a T) -> Option<&'a str>) -> usiz
 fn render_results(provider: ProviderId, results: &[AppResult]) {
 	println!("{}", provider.as_str().cyan().bold());
 	let tw = col_width(results, |r| Some(r.title.as_str()));
-	let vw = col_width(results, |r| r.version.as_deref());
 	for r in results {
 		let mut line = format!("{} {}", "•".cyan().bold(), pad(&r.title, tw).bold());
-		if vw > 0 {
-			line.push_str(&format!(
-				"  {}",
-				pad(r.version.as_deref().unwrap_or(""), vw).green()
-			));
-		}
 		line.push_str(&format!("  {}", r.package.dimmed()));
 		println!("{line}");
 	}
@@ -42,17 +35,19 @@ fn render_results(provider: ProviderId, results: &[AppResult]) {
 
 fn render_versions(provider: ProviderId, list: &[VersionInfo]) {
 	println!("{}", provider.as_str().cyan().bold());
-	// Only pad the version column when a date follows it, else rows end in blanks.
-	let vw = match col_width(list, |v| v.uploaded.as_deref()) {
-		0 => 0,
-		_ => col_width(list, |v| Some(v.version.as_str())),
-	};
+	let vw = col_width(list, |v| Some(v.version.as_str()));
 	for v in list {
-		let mut line = format!("{} {}", "•".cyan().bold(), pad(&v.version, vw).bold());
-		if let Some(up) = &v.uploaded {
-			line.push_str(&format!("  {}", up.dimmed()));
-		}
-		println!("{line}");
+		let line = format!("{} {}", "•".cyan().bold(), pad(&v.version, vw).bold());
+		println!("{line}  {}", v.uploaded.to_string().dimmed());
+	}
+}
+
+/// Per-provider rows in priority order, serialized as a JSON object.
+struct ByProvider<T>(Vec<(ProviderId, Vec<T>)>);
+
+impl<T: serde::Serialize> serde::Serialize for ByProvider<T> {
+	fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+		s.collect_map(self.0.iter().map(|(id, rows)| (id, rows)))
 	}
 }
 
@@ -65,12 +60,12 @@ async fn fan_out<T, F, Fut>(
 	verb: &str,
 	mut fetch: F,
 	render: fn(ProviderId, &[T]),
-) -> Result<Vec<T>, Option<AppError>>
+) -> Result<ByProvider<T>, Option<AppError>>
 where
 	F: FnMut(ProviderId) -> Fut,
 	Fut: Future<Output = Result<Vec<T>, ProviderFailure>>,
 {
-	let mut merged = Vec::new();
+	let mut merged = ByProvider(Vec::new());
 	let mut hit = false;
 	let mut last = None;
 	for id in registry.names() {
@@ -86,7 +81,7 @@ where
 			Ok(rows) => {
 				hit = true;
 				if json {
-					merged.extend(rows);
+					merged.0.push((id, rows));
 				} else {
 					render(id, &rows);
 				}
@@ -156,7 +151,7 @@ pub(super) async fn get(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	version: Option<&str>,
-	arch: &str,
+	arch: Arch,
 	output: &Path,
 	json: bool,
 ) -> Result<(), AppError> {
@@ -171,11 +166,18 @@ pub(super) async fn get(
 	})?;
 	let dest = output.join(crate::common::download_filename(
 		pkg,
-		target.version.as_deref().unwrap_or("latest"),
-		target.arch.as_deref(),
+		&target.version,
+		target.arch,
 	));
 
-	info!("downloading from {} ({})", target.provider, target.url);
+	info!(
+		"downloading {} {} ({}) from {} ({})",
+		pkg,
+		target.version.bold(),
+		target.arch.to_string().bold(),
+		target.provider,
+		target.url.dimmed()
+	);
 	let fetcher = HttpFetcher::new();
 	let saved = fetcher
 		.download_to_file(&target.url, &target.headers, &dest)

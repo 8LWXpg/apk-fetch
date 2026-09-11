@@ -2,18 +2,14 @@
 //! `reqwest`'s TLS fingerprint on APKMirror content paths, where `curl` with a
 //! browser UA passes.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use crate::common::contract::ProviderError;
-use async_trait::async_trait;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-/// Hardcoded knobs (spec: constants live here, not in config).
-/// Whole-request cap for page fetches. Downloads only get `CONNECT_TIMEOUT_SECS`
-/// (a big APK legitimately takes minutes).
 pub const REQUEST_TIMEOUT_SECS: u64 = 30;
 pub const CONNECT_TIMEOUT_SECS: u64 = 20;
 /// Minimum gap between requests from one provider's fetcher.
@@ -45,23 +41,21 @@ fn looks_blocked(body: &str) -> bool {
 	BLOCK_SIGNATURES.iter().any(|sig| body.contains(sig))
 }
 
-/// Extension from the last `Content-Disposition` filename in a header dump — the
-/// name a browser would save this download under. A server (or a hijacked mirror)
-/// chooses that string, so only a short alphanumeric suffix is accepted.
+/// Extension from the last `Content-Disposition` filename in a header dump.
 fn ext_from_disposition(headers: &str) -> Option<String> {
 	let ext = headers
 		.lines()
+		.rev() // walk from the last header backwards...
 		.filter(|l| {
 			l.get(..20)
 				.is_some_and(|p| p.eq_ignore_ascii_case("content-disposition:"))
 		})
-		.filter_map(|l| {
+		.find_map(|l| {
 			// `filename="x.apk"`, or RFC 5987 `filename*=UTF-8\x.apk`.
 			let v = l.split_once("filename")?.1.trim_start_matches(['*', '=']);
 			let v = v.rsplit("''").next()?.trim().trim_matches('"');
 			v.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase())
-		})
-		.next_back()?;
+		})?;
 	(ext.len() <= 8 && ext.chars().all(|c| c.is_ascii_alphanumeric())).then_some(ext)
 }
 
@@ -81,31 +75,19 @@ fn ext_from_type_or_url(content_type: &str, url: &str) -> Option<String> {
 		.map(str::to_string)
 }
 
-/// Appends the extension the site served — `Content-Disposition` first, then
-/// content-type, then the final URL. `dest` arrives without one, and the stem is
-/// full of dots (version numbers), so this appends instead of replacing. Nothing
-/// recognisable leaves the bare name. Returns the path on disk.
-async fn add_served_ext(
-	dest: &Path,
-	headers: &str,
-	content_type: &str,
-	final_url: &str,
-) -> Result<std::path::PathBuf, ProviderError> {
-	let Some(ext) =
-		ext_from_disposition(headers).or_else(|| ext_from_type_or_url(content_type, final_url))
-	else {
-		return Ok(dest.to_path_buf());
-	};
-	let target = std::path::PathBuf::from(format!("{}.{ext}", dest.display()));
-	tokio::fs::rename(dest, &target)
-		.await
-		.map_err(network_err)?;
-	Ok(target)
+/// Served extension from curl's stdout (header dumps, then the `-w` line after
+/// [`META_SENTINEL`]): `Content-Disposition`, then `Content-Type`, then final URL.
+fn served_ext(curl_stdout: &str) -> Option<String> {
+	let (headers, meta) = curl_stdout
+		.rsplit_once(META_SENTINEL)
+		.unwrap_or((curl_stdout, ""));
+	let (ct, url) = meta.split_once('\t').unwrap_or((meta, ""));
+	ext_from_disposition(headers).or_else(|| ext_from_type_or_url(ct, url))
 }
 
 /// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
 /// `PK\x05\x06`. An empty or missing file fails the check.
-async fn starts_with_zip_magic(path: &std::path::Path) -> bool {
+async fn starts_with_zip_magic(path: &Path) -> bool {
 	use tokio::io::AsyncReadExt;
 	let Ok(mut f) = tokio::fs::File::open(path).await else {
 		return false;
@@ -132,16 +114,18 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 	}
 }
 
-#[async_trait]
-pub trait Fetcher: Send + Sync {
-	async fn get_text(&self, url: &str) -> Result<String, ProviderError>;
-}
-
 /// A curl-backed fetcher with a per-instance throttle. Construct one per provider
 /// so each site gets its own request cadence.
+/// Maps a fetched URL to its fixture file stem, or `None` to skip it.
+#[cfg(test)]
+pub type FixtureName = fn(&str) -> Option<&'static str>;
+
 pub struct HttpFetcher {
 	min_gap: Duration,
 	last_request: Mutex<Option<Instant>>,
+	/// Fixture recorder: every 2xx body lands in `dir/<name(url)>.html`.
+	#[cfg(test)]
+	record: Option<(PathBuf, FixtureName)>,
 }
 
 impl HttpFetcher {
@@ -153,6 +137,18 @@ impl HttpFetcher {
 		Self {
 			min_gap,
 			last_request: Mutex::new(None),
+			#[cfg(test)]
+			record: None,
+		}
+	}
+
+	/// A fetcher that also saves what it fetches, so fixtures are captured via
+	/// the provider's own URL building instead of a second copy of it.
+	#[cfg(test)]
+	pub fn recording(dir: PathBuf, name: FixtureName) -> Self {
+		Self {
+			record: Some((dir, name)),
+			..Self::new()
 		}
 	}
 
@@ -187,14 +183,12 @@ impl HttpFetcher {
 			cmd.arg("-H").arg(format!("{k}: {v}"));
 		}
 		cmd.arg(url);
-		// Nothing else ties curl's life to ours: an orphan keeps downloading after
-		// we're gone. Covers every path whose future is dropped mid-flight.
 		cmd.kill_on_drop(true);
 		cmd
 	}
 
-	async fn get(&self, url: &str, headers: &[(String, String)]) -> Result<String, ProviderError> {
-		self.request(url, headers, &[]).await
+	pub async fn get_text(&self, url: &str) -> Result<String, ProviderError> {
+		self.request(url, &[], &[]).await
 	}
 
 	/// POST `url` with a `multipart/form-data` body (curl `-F`). An empty `form`
@@ -226,8 +220,7 @@ impl HttpFetcher {
 			let output = Self::base_cmd(url, headers, false)
 				.args(["--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
 				.args(extra_args)
-				.arg("-w")
-				.arg("\n%{http_code}")
+				.args(["-w", "\n%{http_code}"])
 				.output()
 				.await
 				.map_err(|e| {
@@ -264,21 +257,30 @@ impl HttpFetcher {
 			if looks_blocked(body) {
 				return Err(ProviderError::Blocked);
 			}
+			#[cfg(test)]
+			if let Some((dir, name)) = &self.record
+				&& let Some(name) = name(url)
+			{
+				std::fs::create_dir_all(dir).expect("fixture dir");
+				std::fs::write(dir.join(format!("{name}.html")), trim_html(body))
+					.expect("write fixture");
+			}
 			return Ok(body.to_string());
 		}
 	}
 
-	/// The URL a `HEAD` lands on after redirects, body never downloaded. Lets a
-	/// provider read something the server encodes in a redirect instead of
-	/// scraping it back out of the page (APKCombo's `/en/{pkg}/` -> canonical
-	/// `/{slug}/{pkg}/`). No redirect means the URL is returned unchanged.
+	/// Resolve URL redirection. No redirect means the URL is returned unchanged.
 	pub async fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
 		self.throttle().await;
 
 		let output = Self::base_cmd(url, &[], false)
-			.args(["-I", "--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
-			.arg("-w")
-			.arg("\n%{url_effective}")
+			.args([
+				"-I",
+				"--max-time",
+				&REQUEST_TIMEOUT_SECS.to_string(),
+				"-w",
+				"\n%{url_effective}",
+			])
 			.output()
 			.await
 			.map_err(|e| {
@@ -303,32 +305,38 @@ impl HttpFetcher {
 			.to_string())
 	}
 
-	/// Stream a URL to `dest`. curl draws its own progress bar on the inherited
-	/// stderr (it knows the content length; we did not).
-	///
-	/// Returns the path actually written: if the server's content-type / final URL
-	/// says the payload is a different package type than `dest`'s extension (e.g.
-	/// an `.xapk` when we guessed `.apk`), the file is renamed to match.
+	/// Stream a URL to `dest` (extension-less; the response decides `.apk` vs
+	/// `.xapk`/`.apkm`). Returns the path written. Failure leaves no file.
 	pub async fn download_to_file(
 		&self,
 		url: &str,
 		headers: &[(String, String)],
 		dest: &Path,
-	) -> Result<std::path::PathBuf, ProviderError> {
+	) -> Result<PathBuf, ProviderError> {
 		self.throttle().await;
+		let result = Self::curl_to_file(url, headers, dest).await;
+		if result.is_err() {
+			let _ = tokio::fs::remove_file(dest).await;
+		}
+		result
+	}
 
+	async fn curl_to_file(
+		url: &str,
+		headers: &[(String, String)],
+		dest: &Path,
+	) -> Result<PathBuf, ProviderError> {
 		// `.output()` would force stderr to a pipe and hide curl's progress bar;
 		// spawn instead so stderr stays on the inherited terminal.
 		let mut child = Self::base_cmd(url, headers, true)
-			.args(["--fail", "--retry", &MAX_RETRIES.to_string()])
-			.arg("-o")
+			.args(["--fail", "--retry", &MAX_RETRIES.to_string(), "-o"])
 			.arg(dest)
-			.arg("-D")
-			.arg("-")
-			.arg("-w")
-			.arg(format!(
-				"\n{META_SENTINEL}%{{content_type}}\t%{{url_effective}}"
-			))
+			.args([
+				"-D",
+				"-",
+				"-w",
+				&format!("\n{META_SENTINEL}%{{content_type}}\t%{{url_effective}}"),
+			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::inherit())
 			.spawn()
@@ -338,19 +346,11 @@ impl HttpFetcher {
 				))
 			})?;
 
-		// Downloads are the long-lived curl, so Ctrl+C lands here. Handling the
-		// signal replaces the default handler, which aborts the process outright —
-		// no unwinding, no `kill_on_drop`, so curl would keep downloading orphaned.
-		//
-		// Wait before reading stdout, not after: `read_to_string` only returns once
-		// curl closes the pipe, so reading first parks us here for the whole
-		// download with no `ctrl_c` branch armed. `wait()` leaves stdout open, and
-		// the `-w` line is far too small to fill the pipe buffer.
+		// Waits curl and handle Ctrl+C
 		let status = tokio::select! {
 			status = child.wait() => status.map_err(network_err)?,
 			_ = tokio::signal::ctrl_c() => {
 				let _ = child.kill().await;
-				let _ = tokio::fs::remove_file(dest).await;
 				eprintln!();
 				return Err(ProviderError::Cancelled);
 			}
@@ -363,24 +363,24 @@ impl HttpFetcher {
 		}
 
 		if !status.success() {
-			let _ = tokio::fs::remove_file(dest).await;
-			// curl already printed the reason to the inherited stderr.
+			// curl already printed the reason to stderr.
 			return Err(network_err(format!("curl download failed ({status})")));
 		}
-		// APK/XAPK are ZIP: a non-`PK` payload is an error/landing page
-		// that came back 200 (some mirror download endpoints do this).
+		// Non-ZIP payload = error/landing page that came back 200.
 		if !starts_with_zip_magic(dest).await {
-			let _ = tokio::fs::remove_file(dest).await;
 			return Err(network_err(
 				"downloaded file is not an APK (server returned a non-package response)",
 			));
 		}
-		// stdout holds every redirect's headers, then the `-w` line last.
-		let (headers, meta) = stdout_buf
-			.rsplit_once(META_SENTINEL)
-			.unwrap_or((stdout_buf.as_str(), ""));
-		let (ct, final_url) = meta.split_once('\t').unwrap_or((meta, ""));
-		add_served_ext(dest, headers, ct, final_url).await
+		let Some(ext) = served_ext(&stdout_buf) else {
+			return Ok(dest.to_path_buf());
+		};
+		// Appended, not `set_extension`: the stem holds dotted version numbers.
+		let target = PathBuf::from(format!("{}.{ext}", dest.display()));
+		tokio::fs::rename(dest, &target)
+			.await
+			.map_err(network_err)?;
+		Ok(target)
 	}
 }
 
@@ -390,11 +390,28 @@ impl Default for HttpFetcher {
 	}
 }
 
-#[async_trait]
-impl Fetcher for HttpFetcher {
-	async fn get_text(&self, url: &str) -> Result<String, ProviderError> {
-		self.get(url, &[]).await
+/// Drop `<script>`/`<style>`/`<svg>`/`<noscript>` elements: fixtures shrink
+/// several-fold and nothing the parsers read lives there.
+#[cfg(test)]
+fn trim_html(html: &str) -> String {
+	let lower = html.to_ascii_lowercase();
+	let mut out = String::with_capacity(html.len());
+	let mut pos = 0;
+	while let Some((start, tag)) = ["script", "style", "svg", "noscript"]
+		.iter()
+		.filter_map(|t| lower[pos..].find(&format!("<{t}")).map(|i| (pos + i, *t)))
+		.min()
+	{
+		out.push_str(&html[pos..start]);
+		let close = format!("</{tag}>");
+		let Some(end) = lower[start..].find(&close) else {
+			pos = start; // unterminated: keep the tail as-is
+			break;
+		};
+		pos = start + end + close.len();
 	}
+	out.push_str(&html[pos..]);
+	out
 }
 
 #[cfg(test)]
@@ -402,14 +419,15 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn detects_cloudflare_challenge() {
-		assert!(looks_blocked(
-			"<html><head><title>Just a moment...</title></head></html>"
-		));
-		assert!(looks_blocked("window._cf_chl_opt={};"));
-		assert!(!looks_blocked(
-			"<html><body>normal apkmirror page</body></html>"
-		));
+	fn trim_html_strips_noise_only() {
+		assert_eq!(
+			trim_html("<a>x</a><SCRIPT src=1>var y</script><b>z</b><style>.c{}</style>"),
+			"<a>x</a><b>z</b>"
+		);
+		assert_eq!(
+			trim_html("<p>ok</p><script>never closed"),
+			"<p>ok</p><script>never closed"
+		);
 	}
 
 	#[test]
@@ -459,6 +477,15 @@ mod tests {
 			None
 		);
 		assert_eq!(ext_from_disposition("Content-Type: text/html"), None);
+	}
+
+	#[test]
+	fn served_ext_splits_curl_stdout() {
+		let out = format!(
+			"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n\n{META_SENTINEL}application/octet-stream\thttps://cdn/x.xapk?t=1"
+		);
+		assert_eq!(served_ext(&out).as_deref(), Some("xapk"));
+		assert_eq!(served_ext("no sentinel at all"), None);
 	}
 
 	#[test]

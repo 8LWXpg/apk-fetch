@@ -1,8 +1,9 @@
 use async_trait::async_trait;
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 /// The known providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
 	Apkmirror,
@@ -32,37 +33,99 @@ impl std::fmt::Display for ProviderId {
 	}
 }
 
+bitflags::bitflags! {
+	/// A split bundle carrying every ABI
+	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+	pub struct Arch: u8 {
+		const ARM64_V8A = 1;
+		const ARMEABI_V7A = 2;
+		const X86 = 4;
+		const X86_64 = 8;
+	}
+}
+
+impl Arch {
+	const NAMES: [(Arch, &'static str); 4] = [
+		(Arch::ARM64_V8A, "arm64-v8a"),
+		(Arch::ARMEABI_V7A, "armeabi-v7a"),
+		(Arch::X86, "x86"),
+		(Arch::X86_64, "x86_64"),
+	];
+
+	/// One ABI label; apkmirror says `universal` (variants table) or `noarch` (app page).
+	fn single(tok: &str) -> Option<Arch> {
+		let t = tok.to_ascii_lowercase();
+		Arch::NAMES
+			.iter()
+			.find_map(|(bit, n)| (*n == t).then_some(*bit))
+			.or_else(|| matches!(t.as_str(), "universal" | "noarch").then(Arch::all))
+	}
+}
+
+/// Parse from `,`/`+`-separated list
+impl std::str::FromStr for Arch {
+	type Err = String;
+	fn from_str(s: &str) -> Result<Self, String> {
+		let set: Arch = s
+			.split([',', '+'])
+			.flat_map(str::split_whitespace)
+			.map(|tok| Arch::single(tok).ok_or_else(|| format!("unknown arch {tok:?}")))
+			.collect::<Result<_, _>>()?;
+		if set.is_empty() {
+			Err("empty arch".into())
+		} else {
+			Ok(set)
+		}
+	}
+}
+
+/// `universal`, one ABI, or `a+b` for a partial split bundle.
+impl std::fmt::Display for Arch {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if *self == Arch::all() {
+			return f.write_str("universal");
+		}
+		let mut first = true;
+		for (bit, name) in Arch::NAMES {
+			if self.contains(bit) {
+				if !first {
+					f.write_str("+")?;
+				}
+				f.write_str(name)?;
+				first = false;
+			}
+		}
+		Ok(())
+	}
+}
+
+impl Serialize for Arch {
+	fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+		s.collect_str(self)
+	}
+}
+
 /// A search hit for an app.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct AppResult {
 	pub package: String,
 	pub title: String,
-	/// Latest/only version the search row advertised, if any (APKMirror shows it;
-	/// the others don't).
-	pub version: Option<String>,
-	pub developer: Option<String>,
-	/// Which provider produced this result.
-	pub provider: ProviderId,
 }
 
 /// One published version of an app.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct VersionInfo {
 	pub version: String,
-	pub uploaded: Option<String>,
-	pub provider: ProviderId,
+	pub uploaded: NaiveDate,
 }
 
-/// A concrete, fetchable APK: URL plus any headers the host requires (referer,
-/// cookies, UA) to serve the file rather than a challenge page.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A concrete, fetchable APK: URL plus any headers the host requires.
+#[derive(Debug)]
 pub struct DownloadTarget {
 	pub url: String,
-	pub version: Option<String>,
-	/// Architecture of the resolved variant (e.g. `arm64-v8a`, `universal`).
-	pub arch: Option<String>,
+	pub version: String,
+	pub arch: Arch,
 	pub provider: ProviderId,
-	#[serde(default)]
 	pub headers: Vec<(String, String)>,
 }
 
@@ -102,16 +165,12 @@ impl ProviderError {
 	}
 }
 
-/// `{pkg}-{version}-{arch}`, sanitised for a filesystem. `arch` is dropped when
-/// unknown. No extension: the fetcher appends whatever the site actually serves.
-pub fn download_filename(pkg: &str, version: &str, arch: Option<&str>) -> String {
-	let stem = match arch {
-		Some(a) if !a.is_empty() => format!("{pkg}-{version}-{a}"),
-		_ => format!("{pkg}-{version}"),
-	};
-	stem.chars()
+/// `{pkg}-{version}-{arch}`, sanitised for a filesystem.
+pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
+	format!("{pkg}-{version}-{arch}")
+		.chars()
 		.map(|c| {
-			if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+			if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+') {
 				c
 			} else {
 				'_'
@@ -125,13 +184,13 @@ pub trait Provider: Send + Sync {
 	fn id(&self) -> ProviderId;
 	async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
 	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
-	/// Resolve a download. `arch` is an ABI preference (e.g. `arm64-v8a`); a
-	/// provider falls back to a universal build if it has no exact match.
+	/// Resolve a download. `arch` is an ABI preference; a provider falls back to
+	/// a universal build if it has no exact match.
 	async fn download_url(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
-		arch: &str,
+		arch: Arch,
 	) -> Result<DownloadTarget, ProviderError>;
 	/// Lightweight reachability probe for `providers check`. Default: a canned
 	/// search. Override if a provider has a cheaper health endpoint.
@@ -203,7 +262,7 @@ impl ProviderRegistry {
 		id: ProviderId,
 		pkg: &str,
 		version: Option<&str>,
-		arch: &str,
+		arch: Arch,
 	) -> Result<DownloadTarget, ProviderFailure> {
 		self.require(id)
 			.download_url(pkg, version, arch)
@@ -220,7 +279,7 @@ impl ProviderRegistry {
 		&self,
 		pkg: &str,
 		version: Option<&str>,
-		arch: &str,
+		arch: Arch,
 	) -> Result<DownloadTarget, ResolveError> {
 		let mut attempts = Vec::new();
 		for id in self.names() {
@@ -244,22 +303,40 @@ impl From<Vec<Box<dyn Provider>>> for ProviderRegistry {
 
 #[cfg(test)]
 mod tests {
-	use super::download_filename;
+	use super::{Arch, download_filename};
 
 	#[test]
 	fn filename_shape() {
 		assert_eq!(
-			download_filename("org.mozilla.firefox", "155.0.1", Some("arm64-v8a")),
+			download_filename("org.mozilla.firefox", "155.0.1", Arch::ARM64_V8A),
 			"org.mozilla.firefox-155.0.1-arm64-v8a"
-		);
-		assert_eq!(
-			download_filename("org.mozilla.firefox", "155.0.1", None),
-			"org.mozilla.firefox-155.0.1"
 		);
 		// path separators from a slug-style id get scrubbed
 		assert_eq!(
-			download_filename("mozilla/firefox", "1.0", Some("universal")),
+			download_filename("mozilla/firefox", "1.0", Arch::all()),
 			"mozilla_firefox-1.0-universal"
 		);
+	}
+
+	#[test]
+	fn arch_round_trip() {
+		assert_eq!(" arm64-v8a ".parse(), Ok(Arch::ARM64_V8A));
+		assert_eq!("x86_64".parse(), Ok(Arch::X86_64));
+		assert_eq!("X86".parse(), Ok(Arch::X86));
+		assert_eq!("universal".parse(), Ok(Arch::all()));
+		assert_eq!("noarch".parse(), Ok(Arch::all()));
+		// split bundles: the listed set, every ABI == universal
+		assert_eq!(
+			"arm64-v8a, armeabi-v7a, x86, x86_64".parse(),
+			Ok(Arch::all())
+		);
+		assert_eq!("arm64-v8a + x86".parse(), Ok(Arch::ARM64_V8A | Arch::X86));
+		// absent or unknown: caller defaults to universal
+		assert!("".parse::<Arch>().is_err());
+		assert!("mips".parse::<Arch>().is_err());
+
+		assert_eq!(Arch::all().to_string(), "universal");
+		assert_eq!(Arch::ARMEABI_V7A.to_string(), "armeabi-v7a");
+		assert_eq!((Arch::ARM64_V8A | Arch::X86).to_string(), "arm64-v8a+x86");
 	}
 }

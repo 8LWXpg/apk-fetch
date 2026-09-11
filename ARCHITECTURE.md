@@ -31,7 +31,7 @@ src/
     ├── apkcombo.rs
     ├── apkcombo/
     │   ├── parse.rs
-    │   └── tests/     <app>/*.html + refresh-fixtures.sh
+    │   └── tests/     <app>/*.html (captured by the refresh_fixtures test)
     ├── apkmirror.rs, apkmirror/{parse.rs, tests/}
     └── apkpure.rs,   apkpure/{parse.rs, tests/}
 ```
@@ -163,14 +163,20 @@ fixtures in `src/providers/<provider>/tests/<app>/` (one dir per app;
 no code change). They sit under `src/` rather than in a root `tests/` tree
 because nothing outside that provider's own unit tests reads them. The walk and
 the file read are shared by all three providers, so they live once in the
-`#[cfg(test)]` `fixtures` module. Each provider keeps its own
-`tests/refresh-fixtures.sh`: no args re-fetches every app dir in its
-`APPS` map, `refresh-fixtures.sh <app> <package-id>` adds or refreshes one. The
-scrape chains have nothing in common between sites — apkmirror walks five linked
-pages, apkpure hits three flat URLs — so they are deliberately not merged into
-one script; only ~15 lines of curl/trim boilerplate would be shared. Run it after a
-site changes, check the diff, adjust selectors. Tests assert on structure, not
-version numbers, so a refresh rarely breaks them. Selectors are `const &str`.
+`#[cfg(test)]` `fixtures` module.
+
+Fixtures are captured **through the provider itself**, never by a second copy
+of its URL logic: each provider has an `#[ignore]`d `refresh_fixtures` test
+that drives `search`/`versions`/`download_url` with an
+`HttpFetcher::recording(dir, fixture_name)`, which writes every 2xx body to
+`dir/<fixture_name(url)>.html` (scripts/styles/svg stripped). `fixture_name`
+is the only per-provider piece: a URL-shape → file-stem match next to the
+test. So whatever the code fetches — the search hit `pick_release` chooses,
+the exact multipart form — is what lands in the fixture. Run
+`cargo test refresh_fixtures -- --ignored` after a site changes, check the
+diff, adjust selectors; it doubles as the live smoke test. Tests assert on
+structure, not version numbers, so a refresh rarely breaks them. Selectors
+are `const &str`.
 
 Every provider carries the same two fixture apps: `youtube/`
 (`com.google.android.youtube`) and `youtube-music/`

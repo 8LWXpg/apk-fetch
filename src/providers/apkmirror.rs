@@ -6,58 +6,33 @@
 mod parse;
 
 use crate::common::contract::{
-	AppResult, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo,
 };
-use crate::common::fetch::{Fetcher, HttpFetcher};
+use crate::common::fetch::HttpFetcher;
+use crate::providers::scrape::{choose_variant, query, version_matches};
 use async_trait::async_trait;
 
 const NAME: ProviderId = ProviderId::Apkmirror;
 
+#[derive(Default)]
 pub struct ApkMirror {
 	fetcher: HttpFetcher,
 }
 
 impl ApkMirror {
-	pub fn new() -> Self {
-		Self {
-			fetcher: HttpFetcher::new(),
-		}
-	}
-
-	fn search_url(query: &str) -> String {
-		// ponytail: spaces only. Real form-encoding when a query needs `&`/`#`.
-		format!(
+	async fn search_hits(&self, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+		let url = format!(
 			"{}/?post_type=app_release&searchtype=apk&s={}",
 			parse::BASE_URL,
-			query.trim().replace(' ', "+")
-		)
+			query(q)
+		);
+		parse::parse_search(&self.fetcher.get_text(&url).await?, q)
 	}
 
-	/// search -> first hit that isn't a beta/alpha channel (unless the query asked
-	/// for one).
-	async fn top_release_url(&self, pkg: &str) -> Result<String, ProviderError> {
-		let html = self.fetcher.get_text(&Self::search_url(pkg)).await?;
-		let hits = parse::parse_search(&html)?;
-		let wants_prerelease = ["beta", "alpha", "dev", "canary"]
-			.iter()
-			.any(|k| pkg.contains(k));
-		let pick = hits
-			.iter()
-			.find(|h| {
-				wants_prerelease
-					|| !["-beta", "-alpha", "-dev", "-canary"]
-						.iter()
-						.any(|k| h.release_url.contains(k))
-			})
-			.or_else(|| hits.first())
-			.ok_or_else(|| ProviderError::NotFound(format!("search matched no app for {pkg:?}")))?;
-		Ok(pick.release_url.clone())
-	}
-}
-
-impl Default for ApkMirror {
-	fn default() -> Self {
-		Self::new()
+	/// Best-ranked hit: for a package id, the phone app's newest release.
+	async fn top_hit(&self, pkg: &str) -> Result<parse::SearchHit, ProviderError> {
+		let mut hits = self.search_hits(pkg).await?;
+		Ok(hits.swap_remove(0))
 	}
 }
 
@@ -67,70 +42,53 @@ impl Provider for ApkMirror {
 		NAME
 	}
 
-	async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError> {
-		let html = self.fetcher.get_text(&Self::search_url(query)).await?;
-		let hits = parse::parse_search(&html)?;
-		let mut results: Vec<AppResult> = hits
+	async fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+		// One row per release: keep the first (best-ranked, newest) of each app.
+		let mut seen = std::collections::HashSet::new();
+		Ok(self
+			.search_hits(q)
+			.await?
 			.into_iter()
 			.filter_map(|h| {
-				let package = parse::app_page_from_release(&h.release_url)?
-					.trim_start_matches(parse::BASE_URL)
-					.trim_matches('/')
-					.trim_start_matches("apk/")
-					.to_string();
-				let (title, version) = parse::split_title_version(&h.title);
-				Some(AppResult {
-					package, // APKMirror identifier: "{org}/{repo}" (no Android pkg id on the page)
-					title,
-					version,
-					developer: None,
-					provider: NAME,
+				// APKMirror identifier: "{org}/{repo}" (no Android pkg id on the page)
+				let package = parse::app_slug(&h.release_url)?.to_string();
+				seen.insert(package.clone()).then(|| AppResult {
+					package,
+					title: parse::strip_version(&h.title),
 				})
 			})
-			.collect();
-		// APKMirror ranks on a blind substring match and lists one row per
-		// release, so re-rank by query relevance (stable) and drop repeat apps.
-		results.sort_by_key(|r| parse::relevance(&r.title, query));
-		let mut seen = std::collections::HashSet::new();
-		results.retain(|r| seen.insert(r.package.clone()));
-		Ok(results)
+			.collect())
 	}
 
 	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
-		let release_url = self.top_release_url(pkg).await?;
-		let app_page = parse::app_page_from_release(&release_url)
+		let hit = self.top_hit(pkg).await?;
+		let slug = parse::app_slug(&hit.release_url)
 			.ok_or_else(|| ProviderError::ParseError("bad release url".into()))?;
-		let html = self.fetcher.get_text(&app_page).await?;
-		let rows = parse::parse_versions(&html)?;
-		Ok(rows
-			.into_iter()
-			.map(|r| VersionInfo {
-				version: parse::version_token(&r.title),
-				uploaded: r.uploaded,
-				provider: NAME,
-			})
-			.collect())
+		let html = self
+			.fetcher
+			.get_text(&format!("{}/apk/{slug}/", parse::BASE_URL))
+			.await?;
+		parse::parse_versions(&html)
 	}
 
 	async fn download_url(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
-		arch: &str,
+		arch: Arch,
 	) -> Result<DownloadTarget, ProviderError> {
 		// 1. Locate the version page.
 		let version_page = match version {
-			None => self.top_release_url(pkg).await?,
+			None => self.top_hit(pkg).await?.release_url,
 			Some(want) => {
-				let release_url = self.top_release_url(pkg).await?;
-				let app_page = parse::app_page_from_release(&release_url)
-					.ok_or_else(|| ProviderError::ParseError("bad release url".into()))?;
-				let html = self.fetcher.get_text(&app_page).await?;
-				let rows = parse::parse_versions(&html)?;
-				rows.into_iter()
-					.find(|r| r.title.contains(want) || parse::version_token(&r.title) == want)
+				// Searching `{pkg} {version}` lands on the release page directly. The
+				// app page's version list is paginated and drops older builds.
+				self.search_hits(&format!("{pkg} {want}"))
+					.await?
+					.into_iter()
+					.find(|h| version_matches(&h.version(), want))
 					.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?
-					.version_page_url
+					.release_url
 			}
 		};
 
@@ -139,20 +97,16 @@ impl Provider for ApkMirror {
 		let version_html = self.fetcher.get_text(&version_page).await?;
 		let variants = parse::parse_variants(&version_html);
 		let (resolved_version, resolved_arch, download_page_html) = if variants.is_empty() {
-			(version.map(str::to_string), None, version_html)
+			// Single-build app: the site lists no ABI, so it's a fat/universal APK.
+			(version.map(str::to_string), Arch::all(), version_html)
 		} else {
-			let v = parse::choose_variant(&variants, arch).ok_or_else(|| {
+			let v = choose_variant(&variants, arch).ok_or_else(|| {
 				ProviderError::NotFound(format!("no downloadable variant for {pkg}"))
 			})?;
-			let arch_token = v
-				.arch
-				.split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
-				.find(|t| !t.is_empty())
-				.map(str::to_string);
 			(
 				Some(v.version.clone()),
-				arch_token,
-				self.fetcher.get_text(&v.download_page_url).await?,
+				v.arch,
+				self.fetcher.get_text(&v.url).await?,
 			)
 		};
 
@@ -161,14 +115,60 @@ impl Provider for ApkMirror {
 		let starting_html = self.fetcher.get_text(&button_url).await?;
 		let apk_url = parse::parse_final_link(&starting_html)?;
 
-		let version_label = resolved_version.unwrap_or_else(|| "latest".to_string());
 		Ok(DownloadTarget {
 			url: apk_url,
-			version: Some(version_label),
+			version: resolved_version.unwrap_or_else(|| "latest".to_string()),
 			arch: resolved_arch,
 			provider: NAME,
 			// APKMirror's download.php checks the referring download page.
 			headers: vec![("Referer".to_string(), button_url)],
 		})
+	}
+}
+
+/// Re-captures `tests/<app>/*.html` through the provider's own requests, so a
+/// fixture is by construction the page the code fetches:
+/// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
+/// check the diff, then `cargo test`.
+#[cfg(test)]
+mod refresh {
+	use super::*;
+	use crate::providers::fixtures;
+
+	/// Fixture file for each URL the provider fetches.
+	fn fixture_name(url: &str) -> Option<&'static str> {
+		Some(if url.contains("post_type=app_release") {
+			"search"
+		} else if url.contains("/download/?key=") {
+			"download-starting"
+		} else if url.ends_with("-android-apk-download/") {
+			"download-page"
+		} else if url.ends_with("-release/") {
+			"version"
+		} else {
+			"app"
+		})
+	}
+
+	fn recording(app: &str) -> ApkMirror {
+		ApkMirror {
+			fetcher: HttpFetcher::recording(fixtures::root("apkmirror").join(app), fixture_name),
+		}
+	}
+
+	#[tokio::test]
+	#[ignore = "network"]
+	async fn refresh_fixtures() {
+		for (app, pkg) in fixtures::APPS {
+			let p = recording(app);
+			p.versions(pkg).await.unwrap();
+			p.download_url(pkg, None, Arch::ARM64_V8A).await.unwrap();
+		}
+		// A bogus id only needs the (empty) search page.
+		let err = recording("nonexistent")
+			.search("com.example.does.not.exist.xyz")
+			.await
+			.unwrap_err();
+		assert!(matches!(err, ProviderError::NotFound(_)), "{err}");
 	}
 }
