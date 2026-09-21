@@ -1,6 +1,4 @@
-//! HTTP via the system `curl`, not a Rust client: Cloudflare challenges
-//! `reqwest`'s TLS fingerprint on APKMirror content paths, where `curl` with a
-//! browser UA passes.
+//! HTTP via the system `curl`.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -45,7 +43,7 @@ fn looks_blocked(body: &str) -> bool {
 fn ext_from_disposition(headers: &str) -> Option<String> {
 	let ext = headers
 		.lines()
-		.rev() // walk from the last header backwards...
+		.rev() // Walk from the last header backwards...
 		.filter(|l| {
 			l.get(..20)
 				.is_some_and(|p| p.eq_ignore_ascii_case("content-disposition:"))
@@ -191,8 +189,7 @@ impl HttpFetcher {
 		self.request(url, &[], &[]).await
 	}
 
-	/// POST `url` with a `multipart/form-data` body (curl `-F`). An empty `form`
-	/// still issues a POST (some endpoints want a bodyless POST).
+	/// POST `url` with a `multipart/form-data` body (curl `-F`).
 	pub async fn post_form(
 		&self,
 		url: &str,

@@ -6,7 +6,10 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::cli::{Cli, dispatch};
+use crate::{
+	cli::{Cli, dispatch},
+	common::ui::error,
+};
 
 fn main() -> ExitCode {
 	let cli = Cli::parse();

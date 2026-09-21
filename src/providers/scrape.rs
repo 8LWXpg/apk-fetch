@@ -1,7 +1,11 @@
 //! Scraping helpers shared by the provider parsers.
 
-use crate::common::contract::{Arch, ProviderError};
+use crate::common::{
+	contract::{Arch, ProviderError},
+	ui::error,
+};
 use chrono::NaiveDate;
+use form_urlencoded::byte_serialize;
 use scraper::Selector;
 
 pub fn sel(s: &str) -> Selector {
@@ -28,10 +32,9 @@ pub fn abs(base: &str, href: &str) -> String {
 	}
 }
 
-/// `?q=` value: spaces to `+`.
-// ponytail: spaces only. Real form-encoding when a query needs `&`/`#`.
+/// Encode the query with `form-urlencodes::byte_serialize`
 pub fn query(q: &str) -> String {
-	q.trim().replace(' ', "+")
+	byte_serialize(q.trim().as_bytes()).collect()
 }
 
 /// Upload date off a listing row. A row that fails to parse is reported and
@@ -39,7 +42,7 @@ pub fn query(q: &str) -> String {
 /// emptying the list.
 pub fn parse_date(provider: &str, label: &str, s: &str, fmt: &str) -> Option<NaiveDate> {
 	NaiveDate::parse_from_str(s.trim(), fmt)
-		.inspect_err(|_| crate::error!("{provider}: {label}: unparseable upload date {s:?}"))
+		.inspect_err(|_| error!("{provider}: {label}: unparseable upload date {s:?}"))
 		.ok()
 }
 
@@ -57,7 +60,8 @@ pub struct Variant {
 /// Pick a variant for `arch`. Plain APKs first, then bundles; within each, the
 /// build that includes `arch` with the fewest other ABIs (exact beats
 /// universal), else any. Then the first row.
-// ponytail: no `--dpi`; add it here + in the trait if screen-density builds matter.
+///
+/// Note: dpi is ignored as most sites don't have them.
 pub fn choose_variant(variants: &[Variant], arch: Arch) -> Option<&Variant> {
 	let tightest = |ok: &dyn Fn(&&Variant) -> bool| {
 		variants
@@ -125,7 +129,7 @@ mod tests {
 			variant(false, Arch::ARM64_V8A),
 			variant(false, Arch::all()),
 		];
-		// exact-arch APK wins over an arch-matching bundle and other APKs
+		// Exact-arch APK wins over an arch-matching bundle and other APKs
 		assert_eq!(
 			choose_variant(&vs, Arch::ARM64_V8A).unwrap().arch,
 			Arch::ARM64_V8A
@@ -134,12 +138,12 @@ mod tests {
 			choose_variant(&vs, Arch::ARMEABI_V7A).unwrap().arch,
 			Arch::ARMEABI_V7A
 		);
-		// no exact match -> an APK that includes the ABI (universal), never the bundle
+		// No exact match -> an APK that includes the ABI (universal), never the bundle
 		let picked = choose_variant(&vs, Arch::X86).unwrap();
 		assert!(!picked.bundle);
 		assert_eq!(picked.arch, Arch::all());
 
-		// bundle-only app: arch match on the bundle beats an off-arch bundle
+		// Bundle-only app: arch match on the bundle beats an off-arch bundle
 		let bundles = vec![variant(true, Arch::all()), variant(true, Arch::ARM64_V8A)];
 		assert_eq!(
 			choose_variant(&bundles, Arch::ARM64_V8A).unwrap().arch,

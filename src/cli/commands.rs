@@ -2,11 +2,11 @@ use std::path::Path;
 
 use std::future::Future;
 
+use crate::common::ui::{error, info, print_message, success, warning};
 use crate::common::{
 	AppResult, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
 	VersionInfo,
 };
-use crate::{error, info, success, warn};
 use anyhow::anyhow;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
@@ -75,7 +75,7 @@ where
 		match fetch(id).await {
 			Ok(rows) if rows.is_empty() => {
 				if !json {
-					warn!("{}: no results", id);
+					warning!("{}: no results", id);
 				}
 			}
 			Ok(rows) => {
@@ -88,7 +88,7 @@ where
 			}
 			Err(f) => {
 				if !json {
-					warn!("{f}");
+					warning!("{f}");
 				}
 				last = Some(f.into());
 			}
@@ -219,7 +219,7 @@ pub(super) fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<
 		return Ok(());
 	}
 	for (i, name) in names.iter().enumerate() {
-		crate::print_message!("•", cyan, "{}  (priority {})", name, i + 1);
+		print_message!("•", cyan, "{}  (priority {})", name, i + 1);
 	}
 	Ok(())
 }

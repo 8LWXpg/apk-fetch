@@ -52,7 +52,7 @@ impl Arch {
 		(Arch::X86_64, "x86_64"),
 	];
 
-	/// One ABI label; apkmirror says `universal` (variants table) or `noarch` (app page).
+	/// One ABI label; Apkmirror says `universal` (variants table) or `noarch` (app page).
 	fn single(tok: &str) -> Option<Arch> {
 		let t = tok.to_ascii_lowercase();
 		Arch::NAMES
@@ -105,7 +105,7 @@ impl Serialize for Arch {
 	}
 }
 
-/// A search hit for an app.
+/// A search hit for an app. Versions are not included as most search results don't have them.
 #[derive(Debug, Serialize)]
 pub struct AppResult {
 	pub package: String,
@@ -165,7 +165,7 @@ impl ProviderError {
 	}
 }
 
-/// `{pkg}-{version}-{arch}`, sanitised for a filesystem.
+/// `{pkg}-{version}-{arch}`, sanitized for a filesystem.
 pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
 	format!("{pkg}-{version}-{arch}")
 		.chars()
@@ -182,10 +182,11 @@ pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
 #[async_trait]
 pub trait Provider: Send + Sync {
 	fn id(&self) -> ProviderId;
+	/// User facing search. Should not used by `download_url`.
 	async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
+	/// List available versions.
 	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
-	/// Resolve a download. `arch` is an ABI preference; a provider falls back to
-	/// a universal build if it has no exact match.
+	/// Resolve a download.
 	async fn download_url(
 		&self,
 		pkg: &str,
@@ -311,7 +312,7 @@ mod tests {
 			download_filename("org.mozilla.firefox", "155.0.1", Arch::ARM64_V8A),
 			"org.mozilla.firefox-155.0.1-arm64-v8a"
 		);
-		// path separators from a slug-style id get scrubbed
+		// Path separators from a slug-style id get scrubbed
 		assert_eq!(
 			download_filename("mozilla/firefox", "1.0", Arch::all()),
 			"mozilla_firefox-1.0-universal"
@@ -331,7 +332,7 @@ mod tests {
 			Ok(Arch::all())
 		);
 		assert_eq!("arm64-v8a + x86".parse(), Ok(Arch::ARM64_V8A | Arch::X86));
-		// absent or unknown: caller defaults to universal
+		// absent or unknown: resolves as universal
 		assert!("".parse::<Arch>().is_err());
 		assert!("mips".parse::<Arch>().is_err());
 

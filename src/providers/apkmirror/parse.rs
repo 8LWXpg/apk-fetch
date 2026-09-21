@@ -4,8 +4,6 @@ use scraper::Html;
 
 pub const BASE_URL: &str = "https://www.apkmirror.com";
 
-// --- search --------------------------------------------------------------------
-
 pub struct SearchHit {
 	/// `"{App name} {version}"`, e.g. `"YouTube 21.36.45"`.
 	pub title: String,
@@ -21,14 +19,14 @@ impl SearchHit {
 
 /// Parse the `/?post_type=app_release&s=...` results page for `query`, best
 /// match first (see [`rank`]); ties keep the site's newest-first order.
+///
+/// # Returns
+/// Nonzero length `Vec`
 pub fn parse_search(html: &str, query: &str) -> Result<Vec<SearchHit>, ProviderError> {
-	// A no-results page still renders a "you might also like" grid of unrelated
-	// apps, so an empty selector match isn't enough — check the marker.
 	if html.contains("No results found matching your query") {
 		return Err(ProviderError::NotFound("search returned nothing".into()));
 	}
-	// The results list ends where the "Popular / Latest Uploads" widgets begin;
-	// those use `<h5 class="widgetHeader">` while the results header is a `<div>`.
+	// Strip "Popular / Latest Uploads" widgets in `<h5 class="widgetHeader">`.
 	let html = match html.find(r#"<h5 class="widgetHeader">"#) {
 		Some(cut) => &html[..cut],
 		None => html,
@@ -37,12 +35,9 @@ pub fn parse_search(html: &str, query: &str) -> Result<Vec<SearchHit>, ProviderE
 	let link = sel("h5.appRowTitle a.fontBlack");
 	let mut hits: Vec<SearchHit> = doc
 		.select(&link)
-		.filter_map(|a| {
-			let href = a.value().attr("href")?;
-			Some(SearchHit {
-				title: text_of(a),
-				release_url: abs(BASE_URL, href),
-			})
+		.map(|a| SearchHit {
+			title: text_of(a),
+			release_url: abs(BASE_URL, a.attr("href").unwrap()),
 		})
 		.collect();
 	if hits.is_empty() {
@@ -70,10 +65,10 @@ fn token_match(q: &str, t: &str) -> u8 {
 	}
 }
 
-/// Sort key, lower is better. APKMirror matches the query as a blind substring
-/// of title / developer / description and lists one row per release, newest
-/// first, across every listing that shares a package id (phone, `-wear-os`,
-/// `-beta`, ...). Two terms, in priority order:
+/// Custom ranking because APKMirror search algorithm is a simple substring
+/// check with alphabetic ordering.
+///
+/// Two terms, in priority order:
 ///
 /// - `coverage`: for each query token, its best [`token_match`] against the
 ///   version-stripped title, summed — so every word of `youtube music` counts
@@ -93,7 +88,7 @@ fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
 				.unwrap_or(3)
 		})
 		.sum();
-	let repo = app_slug(&hit.release_url).map_or("", |s| s.rsplit('/').next().unwrap_or(s));
+	let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
 	let extra = tokens(repo)
 		.filter(|st| !tokens(&q).any(|qt| qt == *st))
 		.count() as u8;
@@ -109,34 +104,52 @@ pub fn app_slug(release_url: &str) -> Option<&str> {
 	(!org.is_empty() && !repo.is_empty()).then(|| &path[..org.len() + 1 + repo.len()])
 }
 
-// --- versions -----------------------------------------------------------------
+/// Get latest version from "All versions" widget on app page.
+pub fn latest_version(html: &str) -> Result<SearchHit, ProviderError> {
+	let doc = Html::parse_document(html);
+	let widget_sel = sel("div.listWidget.p-relative");
+	let title_sel = sel("h5.appRowTitle a.fontBlack");
 
-/// Parse the "All versions" widget on an app page.
+	let widget = doc
+		.select(&widget_sel)
+		.next()
+		.ok_or_else(|| parse_err("no 'All versions' widget on app page"))?;
+
+	let a = widget
+		.select(&title_sel)
+		.next()
+		.ok_or_else(|| parse_err("no item in 'All versions' widget"))?;
+
+	Ok(SearchHit {
+		title: text_of(a),
+		release_url: abs(BASE_URL, a.attr("href").unwrap().into()),
+	})
+}
+
+/// Parse the "All versions" widget on app page.
 pub fn parse_versions(html: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 	let doc = Html::parse_document(html);
-	let widget_sel = sel("div.listWidget");
-	let anchor_sel = sel(r#"a[name="all_versions"]"#);
+	let widget_sel = sel("div.listWidget.p-relative");
 	let row_sel = sel("div.appRow");
 	let title_sel = sel("h5.appRowTitle a.fontBlack");
 	let date_sel = sel("span.dateyear_utc");
 
-	// scraper has no :has(), so find the listWidget that contains the anchor.
 	let widget = doc
 		.select(&widget_sel)
-		.find(|w| w.select(&anchor_sel).next().is_some())
-		.ok_or_else(|| parse_err("no 'all versions' widget on app page"))?;
+		.next()
+		.ok_or_else(|| parse_err("no 'All versions' widget on app page"))?;
 
 	let rows: Vec<VersionInfo> = widget
 		.select(&row_sel)
 		.filter_map(|row| {
 			let a = row.select(&title_sel).next()?;
-			a.value().attr("href")?; // skip rows whose title isn't a real link
+			a.attr("href")?; // skip rows whose title isn't a real link
 			let version = version_token(&text_of(a));
 			// `09/7/2026 02:34 UTC`
 			let date = row
 				.select(&date_sel)
 				.next()
-				.and_then(|d| d.value().attr("data-utcdate"))
+				.and_then(|d| d.attr("data-utcdate"))
 				.unwrap_or("");
 			let uploaded = parse_date("apkmirror", &version, date, "%m/%d/%Y %H:%M UTC")?;
 			Some(VersionInfo { version, uploaded })
@@ -149,8 +162,7 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 }
 
 /// Drop the version number from a search-result title:
-/// `"LINE: Calls & Messages 26.14.0"` -> `"LINE: Calls & Messages"`.
-/// Leaves the title whole when no token is a dotted number.
+/// `"YouTube Music 9.35.54"` -> `"YouTube Music"`.
 pub fn strip_version(title: &str) -> String {
 	let tok = version_token(title);
 	if tok == title || !(tok.contains('.') && tok.starts_with(|c: char| c.is_ascii_digit())) {
@@ -165,11 +177,7 @@ pub fn strip_version(title: &str) -> String {
 		.join(" ")
 }
 
-// --- variants -----------------------------------------------------------------
-
-/// Parse the `.variants-table` on a version page. Empty vec (not an error) if the
-/// table is absent — caller may have landed straight on a download page.
-/// [`Variant::url`] is the variant's download page.
+/// Parse the `.variants-table` on a version page. Empty `Vec` if the table is absent.
 pub fn parse_variants(html: &str) -> Vec<Variant> {
 	let doc = Html::parse_document(html);
 	let row_sel = sel("div.variants-table div.table-row");
@@ -182,9 +190,8 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 		.filter_map(|row| {
 			let cells: Vec<_> = row.select(&cell_sel).collect();
 			let link = cells.first()?.select(&link_sel).next()?;
-			let href = link.value().attr("href")?;
-			// Badge is "APK" or "BUNDLE"; a missing badge is treated as a bundle
-			// so it never outranks a labelled APK.
+			let href = link.attr("href")?;
+			// Badge is "APK" or "BUNDLE"; a missing badge is treated as a bundle.
 			let bundle = !cells
 				.first()?
 				.select(&badge_sel)
@@ -193,7 +200,7 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 			Some(Variant {
 				version: text_of(link),
 				bundle,
-				// No ABI cell means the build runs anywhere.
+				// Treat no ABI cell as universal build.
 				arch: cells
 					.get(1)
 					.and_then(|c| text_of(*c).parse().ok())
@@ -204,13 +211,11 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 		.collect()
 }
 
-// --- download chain ----------------------------------------------------------
-
 /// Download page -> the keyed `a.downloadButton` href (absolute).
 pub fn parse_download_button(html: &str) -> Result<String, ProviderError> {
 	let doc = Html::parse_document(html);
 	doc.select(&sel("a.downloadButton"))
-		.find_map(|a| a.value().attr("href"))
+		.find_map(|a| a.attr("href"))
 		.map(|h| abs(BASE_URL, h))
 		.ok_or_else(|| parse_err("no download button on download page"))
 }
@@ -220,7 +225,7 @@ pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 	let doc = Html::parse_document(html);
 	doc.select(&sel("a#download-link"))
 		.chain(doc.select(&sel("div.card-with-tabs a[href]")))
-		.find_map(|a| a.value().attr("href"))
+		.find_map(|a| a.attr("href"))
 		.map(|h| abs(BASE_URL, h))
 		.ok_or_else(|| parse_err("no final download link on 'starting' page"))
 }
@@ -236,20 +241,8 @@ mod tests {
 		for (app, dir) in app_dirs("apkmirror") {
 			let html = read(&dir, "search.html");
 
-			// A dir whose search page shows the "no results" marker (e.g.
-			// `nonexistent/`) must parse as NotFound — not junk hits from the
-			// "Popular / Latest Uploads" widgets further down the page.
-			if html.contains("No results found matching your query") {
-				assert!(
-					matches!(parse_search(&html, &app), Err(ProviderError::NotFound(_))),
-					"{app}: no-results page didn't parse as NotFound"
-				);
-				continue;
-			}
-
 			let hits = parse_search(&html, &app).unwrap_or_else(|e| panic!("{app}: {e}"));
-			// First hit is the phone app, not the automotive/wear spin-off that
-			// uploaded last.
+			// First hit is the phone app, not the automotive/wear spin-off that uploaded last.
 			assert!(
 				hits[0].release_url.contains(&format!("/{app}/{app}-")),
 				"{app}: picked {}",

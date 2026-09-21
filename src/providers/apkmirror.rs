@@ -1,4 +1,4 @@
-//! APKMirror provider. APKMirror has no package-id index, so every entrypoint
+//! APKMirror provider. APKMirror has no package-id index, so every entry point
 //! starts from the site's own search (query = the Android package id), takes the
 //! top hit, then walks: version list -> variants table -> download page ->
 //! "starting" page -> APK URL.
@@ -9,7 +9,7 @@ use crate::common::contract::{
 	AppResult, Arch, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
-use crate::providers::scrape::{choose_variant, query, version_matches};
+use crate::providers::scrape;
 use async_trait::async_trait;
 
 const NAME: ProviderId = ProviderId::Apkmirror;
@@ -20,19 +20,31 @@ pub struct ApkMirror {
 }
 
 impl ApkMirror {
-	async fn search_hits(&self, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+	async fn base_search(
+		&self,
+		arg: &str,
+		q: &str,
+	) -> Result<Vec<parse::SearchHit>, ProviderError> {
 		let url = format!(
-			"{}/?post_type=app_release&searchtype=apk&s={}",
+			"{}/?post_type=app_release&{arg}&s={}",
 			parse::BASE_URL,
-			query(q)
+			scrape::query(q)
 		);
 		parse::parse_search(&self.fetcher.get_text(&url).await?, q)
 	}
 
+	async fn apk_search(&self, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+		self.base_search("searchtype=apk", q).await
+	}
+
+	async fn app_search(&self, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+		self.base_search("searchtype=app", q).await
+	}
+
 	/// Best-ranked hit: for a package id, the phone app's newest release.
-	async fn top_hit(&self, pkg: &str) -> Result<parse::SearchHit, ProviderError> {
-		let mut hits = self.search_hits(pkg).await?;
-		Ok(hits.swap_remove(0))
+	async fn top_app_hit(&self, pkg: &str) -> Result<parse::SearchHit, ProviderError> {
+		let hits = self.app_search(pkg).await?;
+		parse::latest_version(&self.fetcher.get_text(&hits[0].release_url).await?)
 	}
 }
 
@@ -44,16 +56,17 @@ impl Provider for ApkMirror {
 
 	async fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
 		// One row per release: keep the first (best-ranked, newest) of each app.
-		let mut seen = std::collections::HashSet::new();
 		Ok(self
-			.search_hits(q)
+			.app_search(q)
 			.await?
 			.into_iter()
 			.filter_map(|h| {
 				// APKMirror identifier: "{org}/{repo}" (no Android pkg id on the page)
 				let package = parse::app_slug(&h.release_url)?.to_string();
-				seen.insert(package.clone()).then(|| AppResult {
-					package,
+				Some(AppResult {
+					package: percent_encoding::percent_decode_str(&package)
+						.decode_utf8_lossy()
+						.into(),
 					title: parse::strip_version(&h.title),
 				})
 			})
@@ -61,7 +74,7 @@ impl Provider for ApkMirror {
 	}
 
 	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
-		let hit = self.top_hit(pkg).await?;
+		let hit = self.top_app_hit(pkg).await?;
 		let slug = parse::app_slug(&hit.release_url)
 			.ok_or_else(|| ProviderError::ParseError("bad release url".into()))?;
 		let html = self
@@ -79,14 +92,14 @@ impl Provider for ApkMirror {
 	) -> Result<DownloadTarget, ProviderError> {
 		// 1. Locate the version page.
 		let version_page = match version {
-			None => self.top_hit(pkg).await?.release_url,
+			None => self.top_app_hit(pkg).await?.release_url,
 			Some(want) => {
 				// Searching `{pkg} {version}` lands on the release page directly. The
 				// app page's version list is paginated and drops older builds.
-				self.search_hits(&format!("{pkg} {want}"))
+				self.apk_search(&format!("{pkg} {want}"))
 					.await?
 					.into_iter()
-					.find(|h| version_matches(&h.version(), want))
+					.find(|h| scrape::version_matches(&h.version(), want))
 					.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?
 					.release_url
 			}
@@ -97,10 +110,10 @@ impl Provider for ApkMirror {
 		let version_html = self.fetcher.get_text(&version_page).await?;
 		let variants = parse::parse_variants(&version_html);
 		let (resolved_version, resolved_arch, download_page_html) = if variants.is_empty() {
-			// Single-build app: the site lists no ABI, so it's a fat/universal APK.
+			// Single-build app: the site lists no ABI, so it's a universal APK.
 			(version.map(str::to_string), Arch::all(), version_html)
 		} else {
-			let v = choose_variant(&variants, arch).ok_or_else(|| {
+			let v = scrape::choose_variant(&variants, arch).ok_or_else(|| {
 				ProviderError::NotFound(format!("no downloadable variant for {pkg}"))
 			})?;
 			(
@@ -110,7 +123,7 @@ impl Provider for ApkMirror {
 			)
 		};
 
-		// 3. download page -> "starting" page -> APK URL.
+		// 3. Download page -> "starting" page -> APK URL.
 		let button_url = parse::parse_download_button(&download_page_html)?;
 		let starting_html = self.fetcher.get_text(&button_url).await?;
 		let apk_url = parse::parse_final_link(&starting_html)?;
@@ -120,13 +133,13 @@ impl Provider for ApkMirror {
 			version: resolved_version.unwrap_or_else(|| "latest".to_string()),
 			arch: resolved_arch,
 			provider: NAME,
-			// APKMirror's download.php checks the referring download page.
+			// APKMirror `download.php` checks the referring download page.
 			headers: vec![("Referer".to_string(), button_url)],
 		})
 	}
 }
 
-/// Re-captures `tests/<app>/*.html` through the provider's own requests, so a
+/// Recaptures `tests/<app>/*.html` through the provider's own requests, so a
 /// fixture is by construction the page the code fetches:
 /// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
 /// check the diff, then `cargo test`.
