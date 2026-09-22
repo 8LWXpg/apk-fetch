@@ -1,16 +1,16 @@
-//! How a failure becomes a process exit code.
+//! Convert failure into process exit code.
 
 use crate::common::{ProviderError, ProviderFailure, ResolveError};
 
-pub(super) const EXIT_GENERIC: u8 = 1;
-pub(super) const EXIT_NOT_FOUND: u8 = 3;
-pub(super) const EXIT_BLOCKED: u8 = 4;
-pub(super) const EXIT_NETWORK: u8 = 5;
+pub const EXIT_GENERIC: u8 = 1;
+pub const EXIT_NOT_FOUND: u8 = 3;
+pub const EXIT_BLOCKED: u8 = 4;
+pub const EXIT_NETWORK: u8 = 5;
 /// Ctrl+C, by the usual `128 + SIGINT` convention.
-pub(super) const EXIT_CANCELLED: u8 = 130;
+pub const EXIT_CANCELLED: u8 = 130;
 
 /// CLI error carrying the process exit code to use.
-pub(crate) struct AppError {
+pub struct AppError {
 	pub code: u8,
 	pub source: anyhow::Error,
 }
@@ -25,7 +25,7 @@ impl From<serde_json::Error> for AppError {
 }
 
 /// Exit code for one provider's failure.
-pub(super) fn provider_error_code(e: &ProviderError) -> u8 {
+pub fn provider_error_code(e: &ProviderError) -> u8 {
 	match e {
 		ProviderError::NotFound(_) => EXIT_NOT_FOUND,
 		ProviderError::Blocked => EXIT_BLOCKED,

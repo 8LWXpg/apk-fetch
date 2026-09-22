@@ -3,11 +3,12 @@ use crate::providers::scrape::{parse_date, sel, text_of};
 use chrono::NaiveDate;
 use scraper::Html;
 
-pub const BASE_URL: &str = "https://apkpure.com";
+pub type Url = crate::common::contract::Url<super::ApkPure>;
+
 /// Direct-download host: `{DL_URL}/b/{APK|XAPK}/{pkg}?versionCode={c}` 302s to the file.
 pub const DL_URL: &str = "https://d.apkpure.com";
 
-/// apkpure sometimes formats a version as `2.6.2(20653)`
+/// APKPure sometimes formats a version as `2.6.2(20653)`
 fn clean_version(v: &str) -> String {
 	match v.trim().split_once('(') {
 		Some((name, _)) if !name.trim().is_empty() => name.trim().to_string(),
@@ -25,8 +26,6 @@ fn package_from_href(href: &str) -> Option<String> {
 			.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_'));
 	ok.then(|| seg.to_string())
 }
-
-// --- search -------------------------------------------------------------------
 
 pub struct SearchHit {
 	pub package: String,
@@ -64,8 +63,6 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 	Ok(hits)
 }
 
-// --- versions ----------------------------------------------------------------
-
 pub struct VersionRow {
 	pub version: String,
 	/// Version code for download.
@@ -73,7 +70,7 @@ pub struct VersionRow {
 	pub uploaded: NaiveDate,
 }
 
-/// Parse `/x/<pkg>/versions` — rows carry everything in `data-dt-*` attrs.
+/// Parse `/x/<pkg>/versions` — rows carry everything in `data-dt-*` attributes.
 pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 	let doc = Html::parse_document(html);
 	let row = sel("div.ver_download_link[data-dt-version][data-dt-versioncode]");
@@ -153,14 +150,13 @@ mod tests {
 				);
 				assert!(!h.title.trim().is_empty(), "{app}: blank title");
 			}
-			// no duplicate packages
 			let mut pkgs: Vec<_> = hits.iter().map(|h| &h.package).collect();
 			let n = pkgs.len();
 			pkgs.sort();
 			pkgs.dedup();
 			assert_eq!(pkgs.len(), n, "{app}: duplicate packages in results");
 
-			// the app this dir is named for shows up in its own search results
+			// The app this dir is named for shows up in its own search results
 			if let Some(pkg) = app_package(&read(&dir, "app.html")) {
 				assert!(
 					hits.iter().any(|h| h.package == pkg),

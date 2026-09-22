@@ -1,4 +1,7 @@
 //! `<provider>/tests/<app>/*.html` fixture plumbing shared by the parser tests.
+//!
+//! For apkcombo the dir name *is* the search query (name-based provider); the
+//! other two search by package id and treat it as a label.
 
 use std::fs;
 use std::path::{Path, PathBuf};

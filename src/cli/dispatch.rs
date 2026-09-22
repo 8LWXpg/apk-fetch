@@ -6,7 +6,7 @@ use crate::cli::exit::AppError;
 use crate::common::{Provider, ProviderId, ProviderRegistry};
 use crate::providers::{ApkCombo, ApkMirror, ApkPure};
 
-pub(crate) async fn dispatch(cli: Cli) -> Result<(), AppError> {
+pub async fn dispatch(cli: Cli) -> Result<(), AppError> {
 	let registry = build_registry(&selection(&cli.command));
 
 	match cli.command {

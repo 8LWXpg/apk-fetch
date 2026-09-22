@@ -161,8 +161,6 @@ impl HttpFetcher {
 		*last = Some(Instant::now());
 	}
 
-	/// `progress`: show curl's own meter on stderr (downloads). `-s` suppresses
-	/// the meter, so showing it means dropping to a bare `-S`.
 	fn base_cmd(url: &str, headers: &[(String, String)], progress: bool) -> Command {
 		let mut cmd = Command::new("curl");
 		cmd.arg(if progress { "-S" } else { "-sS" });
@@ -323,8 +321,6 @@ impl HttpFetcher {
 		headers: &[(String, String)],
 		dest: &Path,
 	) -> Result<PathBuf, ProviderError> {
-		// `.output()` would force stderr to a pipe and hide curl's progress bar;
-		// spawn instead so stderr stays on the inherited terminal.
 		let mut child = Self::base_cmd(url, headers, true)
 			.args(["--fail", "--retry", &MAX_RETRIES.to_string(), "-o"])
 			.arg(dest)
@@ -343,7 +339,6 @@ impl HttpFetcher {
 				))
 			})?;
 
-		// Waits curl and handle Ctrl+C
 		let status = tokio::select! {
 			status = child.wait() => status.map_err(network_err)?,
 			_ = tokio::signal::ctrl_c() => {

@@ -13,7 +13,6 @@ use unicode_width::UnicodeWidthStr;
 
 use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
-// Pad `s` to `w` terminal columns, then color.
 fn pad(s: &str, w: usize) -> String {
 	format!("{s}{}", " ".repeat(w.saturating_sub(s.width())))
 }
@@ -97,7 +96,7 @@ where
 	if hit { Ok(merged) } else { Err(last) }
 }
 
-pub(super) async fn search(
+pub async fn search(
 	registry: &ProviderRegistry,
 	query: &str,
 	json: bool,
@@ -122,7 +121,7 @@ pub(super) async fn search(
 	Ok(())
 }
 
-pub(super) async fn versions(
+pub async fn versions(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	json: bool,
@@ -147,7 +146,7 @@ pub(super) async fn versions(
 	Ok(())
 }
 
-pub(super) async fn get(
+pub async fn get(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	version: Option<&str>,
@@ -207,7 +206,7 @@ pub(super) async fn get(
 	Ok(())
 }
 
-pub(super) fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
+pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
 	let names = registry.names();
 	if json {
 		let rows: Vec<_> = names
@@ -224,7 +223,7 @@ pub(super) fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<
 	Ok(())
 }
 
-pub(super) async fn providers_check(
+pub async fn providers_check(
 	registry: &ProviderRegistry,
 	json: bool,
 ) -> Result<(), AppError> {

@@ -1,21 +1,19 @@
-//! APKPure provider. APKPure is package-id-addressable — `/x/{pkg}` resolves to
-//! the app page and `d.apkpure.com/b/APK/{pkg}?versionCode=...` 302s straight to
-//! the APK — so there's no search-walk to reach a download.
+//! APKPure is package-id-addressable — `/x/{pkg}` resolves to the app page and
+//! `d.apkpure.com/b/APK/{pkg}?versionCode=...` 302 straight to the APK.
 //!
-//! `arch` is accepted but not honoured: APKPure's web endpoint serves one build
-//! per app regardless of ABI — nearly always a universal APK — so the resolved
-//! `arch` is always `Universal`.
+//! `arch` is accepted but not honored: APKPure's web endpoint serves one build
+//! per app regardless of ABI so the resolved `arch` is always `Universal`.
 
 mod parse;
+use parse::Url;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId,
+	VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{query, version_matches};
 use async_trait::async_trait;
-
-const NAME: ProviderId = ProviderId::Apkpure;
 
 #[derive(Default)]
 pub struct ApkPure {
@@ -26,22 +24,27 @@ impl ApkPure {
 	async fn version_rows(&self, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(&format!("{}/x/{pkg}/versions", parse::BASE_URL))
+			.get_text(Url::from(format!("/x/{pkg}/versions")).as_str())
 			.await?;
 		parse::parse_versions(&html)
 	}
 }
 
+impl ProviderConst for ApkPure {
+	const ID: ProviderId = ProviderId::Apkpure;
+	const BASE_URL: &'static str = "https://apkpure.com";
+}
+
 #[async_trait]
 impl Provider for ApkPure {
 	fn id(&self) -> ProviderId {
-		NAME
+		Self::ID
 	}
 
 	async fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(&format!("{}/search?q={}", parse::BASE_URL, query(q)))
+			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())
 			.await?;
 		Ok(parse::parse_search(&html)?
 			.into_iter()
@@ -70,12 +73,7 @@ impl Provider for ApkPure {
 		version: Option<&str>,
 		_arch: Arch,
 	) -> Result<DownloadTarget, ProviderError> {
-		// `code` is what we hand apkpure (its `versionCode`; `None` means "latest");
-		// `label` is for the filename. A pinned version is looked up in the versions
-		// list both to get that code and so a typo / missing build fails over
-		// instead of silently downloading "latest". Unpinned: ask for "latest" but
-		// resolve the real number for the name. Either GET also 404s -> NotFound for
-		// an unknown package.
+		// `code` is APKPure `versionCode`, `None` means "latest".
 		let (code, label) = match version {
 			Some(want) => {
 				let r = self
@@ -91,7 +89,7 @@ impl Provider for ApkPure {
 			None => {
 				let html = self
 					.fetcher
-					.get_text(&format!("{}/x/{pkg}", parse::BASE_URL))
+					.get_text(Url::from(format!("/x/{pkg}")).as_str())
 					.await?;
 				let label = parse::latest_version(&html)
 					.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))?;
@@ -103,13 +101,13 @@ impl Provider for ApkPure {
 			url: parse::download_url(pkg, code.as_deref()),
 			version: label,
 			arch: Arch::all(),
-			provider: NAME,
+			provider: Self::ID,
 			headers: Vec::new(),
 		})
 	}
 }
 
-/// Re-captures `tests/<app>/*.html` through the provider's own requests, so a
+/// Recaptures `tests/<app>/*.html` through the provider's own requests, so a
 /// fixture is by construction the page the code fetches:
 /// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
 /// check the diff, then `cargo test`.

@@ -1,6 +1,9 @@
 APK
+APKCombo
+APKCombo's
 APKM
 APKMirror
+APKPure
 APKPure's
 APKs
 CRLF

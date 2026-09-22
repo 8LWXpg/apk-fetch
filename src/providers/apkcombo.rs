@@ -1,17 +1,21 @@
-//! APKCombo provider. No Cloudflare / captcha on the download path. Resolves a
-//! package id via APKCombo's own search to get the `{slug}` URL segment, then
-//! walks the download flow documented in `parse`.
+//! APKCombo download flow:
+//!   search              -> `/{slug}/{pkg}/`
+//!   old-versions page   -> `/{slug}/{pkg}/old-versions`      (version list)
+//!   download page       -> `/{slug}/{pkg}/download/phone-{v}-apk`  (carries `xid`)
+//!   POST variant frag   -> `/{slug}/{pkg}/{xid}/dl`   (form: package_name, version)
+//!   POST `/checkin`     -> `fp=...&ip=...` token
+//!   final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en`  -> 302 -> CDN
 
 mod parse;
+use parse::Url;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId,
+	VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{choose_variant, query, version_matches};
 use async_trait::async_trait;
-
-const NAME: ProviderId = ProviderId::Apkcombo;
 
 #[derive(Default)]
 pub struct ApkCombo {
@@ -19,13 +23,13 @@ pub struct ApkCombo {
 }
 
 impl ApkCombo {
-	/// `/en/{pkg}/` 301s to the canonical `/{slug}/{pkg}/`. An app APKCombo
-	/// doesn't carry simply isn't redirected.
+	/// `/en/{pkg}/` 301 to the `/{slug}/{pkg}/`.
 	async fn slug_for(&self, pkg: &str) -> Result<String, ProviderError> {
-		let final_url = self
+		let final_url: Url = self
 			.fetcher
-			.resolve_url(&parse::app_url(parse::LOOKUP_LOCALE, pkg, ""))
-			.await?;
+			.resolve_url(parse::app_url(parse::LOOKUP_LOCALE, pkg, "").as_str())
+			.await?
+			.into();
 		parse::slug_from_canonical_url(&final_url, pkg)
 			.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))
 	}
@@ -37,22 +41,27 @@ impl ApkCombo {
 	) -> Result<Vec<parse::VersionRow>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(&parse::app_url(slug, pkg, "old-versions"))
+			.get_text(parse::app_url(slug, pkg, "old-versions").as_str())
 			.await?;
 		parse::parse_versions(&html)
 	}
 }
 
+impl ProviderConst for ApkCombo {
+	const ID: ProviderId = ProviderId::Apkcombo;
+	const BASE_URL: &'static str = "https://apkcombo.com";
+}
+
 #[async_trait]
 impl Provider for ApkCombo {
 	fn id(&self) -> ProviderId {
-		NAME
+		Self::ID
 	}
 
 	async fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(&format!("{}/search?q={}", parse::BASE_URL, query(q)))
+			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())
 			.await?;
 		Ok(parse::parse_search(&html)?
 			.into_iter()
@@ -95,13 +104,13 @@ impl Provider for ApkCombo {
 				.map(|r| r.download_page_url)
 				.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?,
 		};
-		let xid = parse::extract_xid(&self.fetcher.get_text(&dl_page).await?);
+		let xid = parse::extract_xid(&self.fetcher.get_text(dl_page.as_str()).await?);
 
 		// POST the variant fragment.
 		let frag = self
 			.fetcher
 			.post_form(
-				&parse::app_url(&slug, pkg, &format!("{xid}/dl")),
+				parse::app_url(&slug, pkg, &format!("{xid}/dl")).as_str(),
 				&[("package_name", pkg), ("version", version.unwrap_or(""))],
 			)
 			.await?;
@@ -112,7 +121,7 @@ impl Provider for ApkCombo {
 		// Checkin token, then decorate the r2 link.
 		let checkin = self
 			.fetcher
-			.post_form(&format!("{}/checkin", parse::BASE_URL), &[])
+			.post_form(Url::from("/checkin").as_str(), &[])
 			.await?;
 
 		Ok(DownloadTarget {
@@ -123,13 +132,13 @@ impl Provider for ApkCombo {
 				variant.version.clone()
 			},
 			arch: variant.arch,
-			provider: NAME,
+			provider: Self::ID,
 			headers: Vec::new(),
 		})
 	}
 }
 
-/// Re-captures `tests/<app>/*.html` through the provider's own requests, so a
+/// Recaptures `tests/<app>/*.html` through the provider's own requests, so a
 /// fixture is by construction the page the code fetches:
 /// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
 /// check the diff, then `cargo test`.
@@ -160,7 +169,7 @@ mod refresh {
 			let p = ApkCombo {
 				fetcher: HttpFetcher::recording(fixtures::root("apkcombo").join(app), fixture_name),
 			};
-			// APKCombo search is name-based: the dir name is the query.
+			// APKCombo search is name-based.
 			p.search(app).await.unwrap();
 			p.versions(pkg).await.unwrap();
 			p.download_url(pkg, None, Arch::ARM64_V8A).await.unwrap();

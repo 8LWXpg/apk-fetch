@@ -1,28 +1,19 @@
-//! APKCombo download flow:
-//!   search              -> `/{slug}/{pkg}/`
-//!   old-versions page   -> `/{slug}/{pkg}/old-versions`      (version list)
-//!   download page       -> `/{slug}/{pkg}/download/phone-{v}-apk`  (carries `xid`)
-//!   POST variant frag   -> `/{slug}/{pkg}/{xid}/dl`   (form: package_name, version)
-//!   POST `/checkin`     -> `fp=...&ip=...` token
-//!   final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en`  -> 302 -> CDN
-
 use crate::common::contract::{Arch, ProviderError};
-use crate::providers::scrape::{Variant, abs, parse_date, parse_err, sel, text_of, version_token};
+use crate::providers::scrape::{Variant, parse_date, parse_err, sel, text_of, version_token};
+
 use chrono::NaiveDate;
 use scraper::Html;
 
-pub const BASE_URL: &str = "https://apkcombo.com";
+pub type Url = crate::common::contract::Url<super::ApkCombo>;
+
 /// Fallback build tag if the download page's `var xid = "..."` can't be scraped.
 pub const FALLBACK_XID: &str = "01a1200x20240308";
 pub const LOOKUP_LOCALE: &str = "en";
 
 /// `{BASE}/{slug}/{pkg}/{tail}`.
-pub fn app_url(slug: &str, pkg: &str, tail: &str) -> String {
-	format!("{BASE_URL}/{slug}/{pkg}/{tail}")
+pub fn app_url(slug: &str, pkg: &str, tail: &str) -> Url {
+	format!("{slug}/{pkg}/{tail}").into()
 }
-
-// --- search ------------------------------------------------------------------
-
 pub struct SearchHit {
 	pub package: String,
 	pub title: String,
@@ -30,8 +21,8 @@ pub struct SearchHit {
 
 /// The `{slug}` from a canonical app URL `{BASE}/{slug}/{pkg}/`. `None` when the
 /// URL isn't that shape, or is still the `{LOOKUP_LOCALE}` one we asked for.
-pub fn slug_from_canonical_url(url: &str, pkg: &str) -> Option<String> {
-	let path = url.strip_prefix(BASE_URL)?.trim_matches('/');
+pub fn slug_from_canonical_url(url: &Url, pkg: &str) -> Option<String> {
+	let path = url.path()?;
 	match path.split('/').collect::<Vec<_>>()[..] {
 		[slug, p] if p == pkg && slug != LOOKUP_LOCALE => Some(slug.to_string()),
 		_ => None,
@@ -67,13 +58,11 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 	Ok(hits)
 }
 
-// --- versions --------------------------------------------------------------
-
 pub struct VersionRow {
 	pub version: String,
 	pub uploaded: NaiveDate,
-	/// `/{slug}/{pkg}/download/phone-{version}-apk` (absolute).
-	pub download_page_url: String,
+	/// `/{slug}/{pkg}/download/phone-{version}-apk`
+	pub download_page_url: Url,
 }
 
 pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
@@ -97,7 +86,7 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 			Some(VersionRow {
 				version,
 				uploaded,
-				download_page_url: abs(BASE_URL, href),
+				download_page_url: href.into(),
 			})
 		})
 		.collect();
@@ -116,8 +105,6 @@ pub fn extract_xid(html: &str) -> String {
 		.unwrap_or(FALLBACK_XID)
 		.to_string()
 }
-
-// --- variants (POST /dl fragment) -----------------------------------------
 
 /// [`Variant::url`] is the `/r2?u=<encoded signed URL>` link (absolute).
 pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
@@ -158,7 +145,7 @@ pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
 					.next()
 					.is_some_and(|t| text_of(t).eq_ignore_ascii_case("xapk")),
 				arch,
-				url: abs(BASE_URL, href),
+				url: Url::from(href).into_string(),
 			});
 		}
 	}
@@ -180,8 +167,8 @@ mod tests {
 	use crate::providers::scrape::choose_variant;
 
 	/// `{pkg}` out of a `/{slug}/{pkg}/download/phone-{v}-apk` URL.
-	fn pkg_from_download_url(url: &str) -> Option<String> {
-		let path = url.strip_prefix(BASE_URL)?.trim_matches('/');
+	fn pkg_from_download_url(url: &Url) -> Option<String> {
+		let path = url.path()?;
 		let pkg = path.split('/').nth(1)?;
 		pkg.contains('.').then(|| pkg.to_string())
 	}
@@ -215,7 +202,12 @@ mod tests {
 				hits.iter().any(|h| h.package == pkg),
 				"{app}: {pkg} missing from search"
 			);
-			assert!(vers[0].download_page_url.contains("/download/phone-"));
+			assert!(
+				vers[0]
+					.download_page_url
+					.as_str()
+					.contains("/download/phone-")
+			);
 			assert!(vers.iter().any(|v| {
 				v.version.contains('.') && v.version.starts_with(|c: char| c.is_ascii_digit())
 			}));
@@ -238,17 +230,17 @@ mod tests {
 		let yt = "com.google.android.youtube";
 		// `/en/{pkg}/` redirected to the canonical page: first segment is the slug.
 		assert_eq!(
-			slug_from_canonical_url(&format!("{BASE_URL}/youtube/{yt}/"), yt).as_deref(),
+			slug_from_canonical_url(&format!("/youtube/{yt}/").into(), yt).as_deref(),
 			Some("youtube")
 		);
 		// Never redirected — APKCombo has no page for it.
 		assert_eq!(
-			slug_from_canonical_url(&format!("{BASE_URL}/{LOOKUP_LOCALE}/{yt}/"), yt),
+			slug_from_canonical_url(&format!("{LOOKUP_LOCALE}/{yt}/").into(), yt),
 			None
 		);
 		// Landed on a different app's page.
 		assert_eq!(
-			slug_from_canonical_url(&format!("{BASE_URL}/spotify/com.spotify.music/"), yt),
+			slug_from_canonical_url(&format!("/spotify/com.spotify.music/").into(), yt),
 			None
 		);
 	}

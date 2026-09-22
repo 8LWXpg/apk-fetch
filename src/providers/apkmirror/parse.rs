@@ -1,14 +1,13 @@
 use crate::common::contract::{Arch, ProviderError, VersionInfo};
-use crate::providers::scrape::{Variant, abs, parse_date, parse_err, sel, text_of, version_token};
+use crate::providers::scrape::{Variant, parse_date, parse_err, sel, text_of, version_token};
 use scraper::Html;
 
-pub const BASE_URL: &str = "https://www.apkmirror.com";
+pub type Url = crate::common::contract::Url<super::ApkMirror>;
 
 pub struct SearchHit {
 	/// `"{App name} {version}"`, e.g. `"YouTube 21.36.45"`.
 	pub title: String,
-	/// Release-page URL (absolute).
-	pub release_url: String,
+	pub release_url: Url,
 }
 
 impl SearchHit {
@@ -37,7 +36,7 @@ pub fn parse_search(html: &str, query: &str) -> Result<Vec<SearchHit>, ProviderE
 		.select(&link)
 		.map(|a| SearchHit {
 			title: text_of(a),
-			release_url: abs(BASE_URL, a.attr("href").unwrap()),
+			release_url: a.attr("href").unwrap().into(),
 		})
 		.collect();
 	if hits.is_empty() {
@@ -96,8 +95,8 @@ fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
 }
 
 /// `{BASE}/apk/{org}/{repo}/{repo}-x-y-release/` -> `{org}/{repo}`.
-pub fn app_slug(release_url: &str) -> Option<&str> {
-	let path = release_url.strip_prefix(BASE_URL)?.strip_prefix("/apk/")?;
+pub fn app_slug(release_url: &Url) -> Option<&str> {
+	let path = release_url.path()?.strip_prefix("apk/")?;
 	let mut segs = path.split('/');
 	let org = segs.next()?;
 	let repo = segs.next()?;
@@ -122,7 +121,7 @@ pub fn latest_version(html: &str) -> Result<SearchHit, ProviderError> {
 
 	Ok(SearchHit {
 		title: text_of(a),
-		release_url: abs(BASE_URL, a.attr("href").unwrap().into()),
+		release_url: a.attr("href").unwrap().into(),
 	})
 }
 
@@ -143,7 +142,7 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 		.select(&row_sel)
 		.filter_map(|row| {
 			let a = row.select(&title_sel).next()?;
-			a.attr("href")?; // skip rows whose title isn't a real link
+			a.attr("href")?; // Skip rows whose title isn't a real link
 			let version = version_token(&text_of(a));
 			// `09/7/2026 02:34 UTC`
 			let date = row
@@ -205,18 +204,18 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 					.get(1)
 					.and_then(|c| text_of(*c).parse().ok())
 					.unwrap_or(Arch::all()),
-				url: abs(BASE_URL, href),
+				url: Url::from(href).into_string(),
 			})
 		})
 		.collect()
 }
 
 /// Download page -> the keyed `a.downloadButton` href (absolute).
-pub fn parse_download_button(html: &str) -> Result<String, ProviderError> {
+pub fn parse_download_button(html: &str) -> Result<Url, ProviderError> {
 	let doc = Html::parse_document(html);
 	doc.select(&sel("a.downloadButton"))
 		.find_map(|a| a.attr("href"))
-		.map(|h| abs(BASE_URL, h))
+		.map(Into::into)
 		.ok_or_else(|| parse_err("no download button on download page"))
 }
 
@@ -226,7 +225,7 @@ pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
 	doc.select(&sel("a#download-link"))
 		.chain(doc.select(&sel("div.card-with-tabs a[href]")))
 		.find_map(|a| a.attr("href"))
-		.map(|h| abs(BASE_URL, h))
+		.map(Into::into)
 		.ok_or_else(|| parse_err("no final download link on 'starting' page"))
 }
 
@@ -244,14 +243,21 @@ mod tests {
 			let hits = parse_search(&html, &app).unwrap_or_else(|e| panic!("{app}: {e}"));
 			// First hit is the phone app, not the automotive/wear spin-off that uploaded last.
 			assert!(
-				hits[0].release_url.contains(&format!("/{app}/{app}-")),
+				hits[0]
+					.release_url
+					.as_str()
+					.contains(&format!("/{app}/{app}-")),
 				"{app}: picked {}",
 				hits[0].release_url
 			);
 			for h in &hits {
-				assert!(h.release_url.contains("/apk/"), "{app}: {}", h.release_url);
 				assert!(
-					h.release_url.ends_with("-release/"),
+					h.release_url.as_str().contains("/apk/"),
+					"{app}: {}",
+					h.release_url
+				);
+				assert!(
+					h.release_url.as_str().ends_with("-release/"),
 					"{app}: {}",
 					h.release_url
 				);
@@ -290,7 +296,7 @@ mod tests {
 
 			let btn = parse_download_button(&read(&dir, "download-page.html"))
 				.unwrap_or_else(|e| panic!("{app}: parse_download_button: {e}"));
-			assert!(btn.contains("/download/?key="), "{app}: {btn}");
+			assert!(btn.as_str().contains("/download/?key="), "{app}: {btn}");
 			let final_url = parse_final_link(&read(&dir, "download-starting.html"))
 				.unwrap_or_else(|e| panic!("{app}: parse_final_link: {e}"));
 			assert!(
@@ -303,11 +309,14 @@ mod tests {
 	#[test]
 	fn derives_app_slug() {
 		assert_eq!(
-			app_slug("https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/"),
+			app_slug(&"https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/".into()),
 			Some("mozilla/firefox")
 		);
-		assert_eq!(app_slug("https://www.apkmirror.com/apk/mozilla/"), None);
-		assert_eq!(app_slug("https://elsewhere/apk/a/b/"), None);
+		assert_eq!(
+			app_slug(&"https://www.apkmirror.com/apk/mozilla/".into()),
+			None
+		);
+		assert_eq!(app_slug(&"https://elsewhere/apk/a/b/".into()), None);
 	}
 
 	#[test]
@@ -316,9 +325,9 @@ mod tests {
 			strip_version("LINE: Calls & Messages 26.14.0"),
 			"LINE: Calls & Messages"
 		);
-		// version is not the last token
+		// Version is not the last token
 		assert_eq!(strip_version("YouTube 21.36.42 beta"), "YouTube beta");
-		// no dotted number -> title kept whole
+		// No dotted number -> title kept whole
 		assert_eq!(strip_version("Some App"), "Some App");
 		assert_eq!(strip_version("2nd Line"), "2nd Line");
 	}
@@ -326,7 +335,7 @@ mod tests {
 	fn hit(title: &str, repo: &str) -> SearchHit {
 		SearchHit {
 			title: title.into(),
-			release_url: format!("{BASE_URL}/apk/org/{repo}/{repo}-1-release/"),
+			release_url: format!("/apk/org/{repo}/{repo}-1-release/").into(),
 		}
 	}
 
@@ -358,7 +367,7 @@ mod tests {
 		let beta = r("YouTube 1.2 beta", "youtube-beta", pkg);
 		let wear = r("YouTube 1.1", "youtube-wear-os", pkg);
 		assert!(phone < beta && beta < wear);
-		// asking for the channel lifts its penalty; `dev` in a package id is a
+		// Asking for the channel lifts its penalty; `dev` in a package id is a
 		// token, not a substring, so `com.devhd.x` doesn't pick `-dev`
 		assert!(
 			r("YouTube beta", "youtube-beta", "youtube beta")

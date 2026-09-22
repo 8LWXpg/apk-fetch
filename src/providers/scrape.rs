@@ -24,14 +24,6 @@ pub fn parse_err(msg: impl Into<String>) -> ProviderError {
 	ProviderError::ParseError(msg.into())
 }
 
-pub fn abs(base: &str, href: &str) -> String {
-	if href.starts_with("http") {
-		href.to_string()
-	} else {
-		format!("{base}/{}", href.trim_start_matches('/'))
-	}
-}
-
 /// Encode the query with `form-urlencodes::byte_serialize`
 pub fn query(q: &str) -> String {
 	byte_serialize(q.trim().as_bytes()).collect()
@@ -57,11 +49,7 @@ pub struct Variant {
 	pub url: String,
 }
 
-/// Pick a variant for `arch`. Plain APKs first, then bundles; within each, the
-/// build that includes `arch` with the fewest other ABIs (exact beats
-/// universal), else any. Then the first row.
-///
-/// Note: dpi is ignored as most sites don't have them.
+/// Pick a variant for `arch`. Plain APKs first, then bundles.
 pub fn choose_variant(variants: &[Variant], arch: Arch) -> Option<&Variant> {
 	let tightest = |ok: &dyn Fn(&&Variant) -> bool| {
 		variants
@@ -98,14 +86,6 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn abs_resolves_against_base() {
-		let base = "https://example.com";
-		assert_eq!(abs(base, "https://cdn.x/y"), "https://cdn.x/y");
-		assert_eq!(abs(base, "/apk/x"), "https://example.com/apk/x");
-		assert_eq!(abs(base, "apk/x"), "https://example.com/apk/x");
-	}
-
-	#[test]
 	fn version_token_takes_the_trailing_number() {
 		assert_eq!(version_token("Spotify 9.1.80.2221"), "9.1.80.2221");
 		assert_eq!(version_token("YouTube 21.36.45 (arm64-v8a)"), "21.36.45");
@@ -129,7 +109,6 @@ mod tests {
 			variant(false, Arch::ARM64_V8A),
 			variant(false, Arch::all()),
 		];
-		// Exact-arch APK wins over an arch-matching bundle and other APKs
 		assert_eq!(
 			choose_variant(&vs, Arch::ARM64_V8A).unwrap().arch,
 			Arch::ARM64_V8A
@@ -138,12 +117,10 @@ mod tests {
 			choose_variant(&vs, Arch::ARMEABI_V7A).unwrap().arch,
 			Arch::ARMEABI_V7A
 		);
-		// No exact match -> an APK that includes the ABI (universal), never the bundle
 		let picked = choose_variant(&vs, Arch::X86).unwrap();
 		assert!(!picked.bundle);
 		assert_eq!(picked.arch, Arch::all());
 
-		// Bundle-only app: arch match on the bundle beats an off-arch bundle
 		let bundles = vec![variant(true, Arch::all()), variant(true, Arch::ARM64_V8A)];
 		assert_eq!(
 			choose_variant(&bundles, Arch::ARM64_V8A).unwrap().arch,

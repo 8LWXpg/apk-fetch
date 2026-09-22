@@ -15,17 +15,17 @@ use crate::common::{Arch, ProviderId};
     styles = get_styles(),
     arg_required_else_help = true
 )]
-pub(crate) struct Cli {
+pub struct Cli {
 	/// Machine-readable JSON output.
 	#[arg(long, global = true)]
-	pub(super) json: bool,
+	pub json: bool,
 
 	#[command(subcommand)]
-	pub(super) command: Command,
+	pub command: Command,
 }
 
 #[derive(Subcommand)]
-pub(super) enum Command {
+pub enum Command {
 	/// Search for an app by name.
 	Search {
 		query: String,
@@ -76,7 +76,7 @@ pub(super) enum Command {
 }
 
 #[derive(Subcommand)]
-pub(super) enum ProvidersCmd {
+pub enum ProvidersCmd {
 	/// List configured providers and their priority.
 	List,
 	/// Check provider reachability.

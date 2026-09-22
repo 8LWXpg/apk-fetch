@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -30,6 +32,74 @@ impl ProviderId {
 impl std::fmt::Display for ProviderId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(self.as_str())
+	}
+}
+
+/// Provider constants that can be used by generics.
+pub trait ProviderConst {
+	const ID: ProviderId;
+	const BASE_URL: &'static str;
+}
+
+/// Minimal URL struct, type of `url` field can be replaced if more complex handling needed.
+pub struct Url<C> {
+	url: String,
+	_marker: PhantomData<C>,
+}
+
+impl<C: ProviderConst> From<String> for Url<C> {
+	fn from(s: String) -> Self {
+		let url = if s.starts_with("http://") || s.starts_with("https://") {
+			s
+		} else {
+			format!("{}/{}", C::BASE_URL, s.trim_start_matches('/'))
+		};
+		Self {
+			url,
+			_marker: PhantomData,
+		}
+	}
+}
+
+impl<C: ProviderConst> From<&str> for Url<C> {
+	fn from(s: &str) -> Self {
+		s.to_string().into()
+	}
+}
+
+impl<C> Clone for Url<C> {
+	fn clone(&self) -> Self {
+		Self {
+			url: self.url.clone(),
+			_marker: PhantomData,
+		}
+	}
+}
+
+impl<C> std::fmt::Debug for Url<C> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_tuple("AbsUrl").field(&self.url).finish()
+	}
+}
+
+impl<C> std::fmt::Display for Url<C> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.url)
+	}
+}
+
+impl<C: ProviderConst> Url<C> {
+	pub fn as_str(&self) -> &str {
+		&self.url
+	}
+
+	pub fn into_string(self) -> String {
+		self.url
+	}
+
+	/// Path without `BASE_URL` and leading/ending `/`.
+	pub fn path(&self) -> Option<&str> {
+		Some(self.url.strip_prefix(C::BASE_URL)?.trim_matches('/'))
 	}
 }
 
@@ -132,6 +202,7 @@ pub struct DownloadTarget {
 /// Failure modes a provider can hit.
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
+	/// The site won't serve this client right now.
 	#[error("blocked by anti-bot / rate limit (challenge page, 403, or 429)")]
 	Blocked,
 	/// The string says what was missing. The provider name is added by
@@ -312,7 +383,6 @@ mod tests {
 			download_filename("org.mozilla.firefox", "155.0.1", Arch::ARM64_V8A),
 			"org.mozilla.firefox-155.0.1-arm64-v8a"
 		);
-		// Path separators from a slug-style id get scrubbed
 		assert_eq!(
 			download_filename("mozilla/firefox", "1.0", Arch::all()),
 			"mozilla_firefox-1.0-universal"
