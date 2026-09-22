@@ -220,7 +220,7 @@ pub fn parse_download_button(html: &str) -> Result<Url, ProviderError> {
 }
 
 /// "Your download is starting..." page -> the actual APK URL (absolute).
-pub fn parse_final_link(html: &str) -> Result<String, ProviderError> {
+pub fn parse_final_link(html: &str) -> Result<Url, ProviderError> {
 	let doc = Html::parse_document(html);
 	doc.select(&sel("a#download-link"))
 		.chain(doc.select(&sel("div.card-with-tabs a[href]")))
@@ -300,7 +300,8 @@ mod tests {
 			let final_url = parse_final_link(&read(&dir, "download-starting.html"))
 				.unwrap_or_else(|e| panic!("{app}: parse_final_link: {e}"));
 			assert!(
-				final_url.contains("download.php") || final_url.contains("downloadr"),
+				final_url.as_str().contains("download.php")
+					|| final_url.as_str().contains("downloadr"),
 				"{app}: {final_url}"
 			);
 		}

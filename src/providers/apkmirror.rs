@@ -131,7 +131,7 @@ impl Provider for ApkMirror {
 		let apk_url = parse::parse_final_link(&starting_html)?;
 
 		Ok(DownloadTarget {
-			url: apk_url,
+			url: apk_url.into_string(),
 			version: resolved_version.unwrap_or_else(|| "latest".to_string()),
 			arch: resolved_arch,
 			provider: NAME,

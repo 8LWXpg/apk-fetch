@@ -1,0 +1,2 @@
+# Captured HTML fixtures are saved pages for the parsers' tests, not source.
+src/providers/*/tests/**/*.html linguist-vendored
