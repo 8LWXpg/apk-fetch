@@ -1,8 +1,8 @@
 # apk-fetch
 
-Multi-source APK downloader with fallback. Resolves a package from a chain of
-third-party mirrors (APKCombo, APKPure, APKMirror), picks a APK build for
-your ABI, and downloads it, retrying the next source if one fails.
+Multi-source command line APK downloader with fallback. Resolves a package from 
+a chain of third-party mirrors (APKCombo, APKPure, APKMirror), picks a APK build
+for your ABI, and downloads it, retrying the next source if one fails.
 
 ## Quickstart
 
