@@ -57,7 +57,7 @@ pub enum Command {
 		#[arg(long, conflicts_with = "priority")]
 		provider: Option<ProviderId>,
 		/// Providers to try, in order, until one resolves (comma-separated or
-		/// repeated). Default: the built-in priority order.
+		/// repeated). Default: apkcombo, apkpure, apkmirror.
 		#[arg(long, value_delimiter = ',')]
 		priority: Vec<ProviderId>,
 		/// Preferred ABI (arm64-v8a, armeabi-v7a, x86, x86_64, universal);
