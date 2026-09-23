@@ -163,67 +163,6 @@ pub fn final_download_url(r2_url: &str, checkin: &str, pkg: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::providers::fixtures::{app_dirs, read};
-	use crate::providers::scrape::choose_variant;
-
-	/// `{pkg}` out of a `/{slug}/{pkg}/download/phone-{v}-apk` URL.
-	fn pkg_from_download_url(url: &Url) -> Option<String> {
-		let path = url.path()?;
-		let pkg = path.split('/').nth(1)?;
-		pkg.contains('.').then(|| pkg.to_string())
-	}
-
-	#[test]
-	fn search_and_versions_and_variants_parse() {
-		for (app, dir) in app_dirs("apkcombo") {
-			let hits = parse_search(&read(&dir, "search.html"))
-				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
-			assert!(!hits.is_empty(), "{app}: empty hit list");
-			for h in &hits {
-				assert!(
-					h.package.contains('.'),
-					"{app}: bad package {:?}",
-					h.package
-				);
-				assert!(!h.title.trim().is_empty(), "{app}: blank title");
-			}
-
-			let vers = parse_versions(&read(&dir, "old-versions.html"))
-				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
-			assert!(!vers.is_empty(), "{app}: no version rows");
-
-			// Cross-check the fixtures against each other: the package the
-			// version pages are for must be one the search page actually found.
-			// Catches a dir whose files were captured for different apps, and the
-			// "we fetched a generic page" class that a per-file assert sails past.
-			let pkg = pkg_from_download_url(&vers[0].download_page_url)
-				.unwrap_or_else(|| panic!("{app}: no package in {}", vers[0].download_page_url));
-			assert!(
-				hits.iter().any(|h| h.package == pkg),
-				"{app}: {pkg} missing from search"
-			);
-			assert!(
-				vers[0]
-					.download_page_url
-					.as_str()
-					.contains("/download/phone-")
-			);
-			assert!(vers.iter().any(|v| {
-				v.version.contains('.') && v.version.starts_with(|c: char| c.is_ascii_digit())
-			}));
-
-			assert!(!extract_xid(&read(&dir, "download-page.html")).is_empty());
-
-			let variants = parse_variants(&read(&dir, "variants.html"))
-				.unwrap_or_else(|e| panic!("{app}: variants: {e}"));
-			for v in &variants {
-				assert!(v.url.contains("/r2?u="), "{app}: {}", v.url);
-			}
-			// Every fixture app publishes a plain APK; the pick must land on one.
-			assert!(variants.iter().any(|v| !v.bundle), "{app}: no plain APK");
-			assert!(!choose_variant(&variants, Arch::ARM64_V8A).unwrap().bundle);
-		}
-	}
 
 	#[test]
 	fn slug_off_the_redirect() {
@@ -240,7 +179,7 @@ mod tests {
 		);
 		// Landed on a different app's page.
 		assert_eq!(
-			slug_from_canonical_url(&format!("/spotify/com.spotify.music/").into(), yt),
+			slug_from_canonical_url(&"/spotify/com.spotify.music/".into(), yt),
 			None
 		);
 	}

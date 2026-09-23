@@ -1,10 +1,6 @@
 //! APKCombo download flow:
-//!   search              -> `/{slug}/{pkg}/`
-//!   old-versions page   -> `/{slug}/{pkg}/old-versions`      (version list)
-//!   download page       -> `/{slug}/{pkg}/download/phone-{v}-apk`  (carries `xid`)
-//!   POST variant frag   -> `/{slug}/{pkg}/{xid}/dl`   (form: package_name, version)
-//!   POST `/checkin`     -> `fp=...&ip=...` token
-//!   final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en`  -> 302 -> CDN
+//!   search -> old-versions page -> download page -> POST variant frag -> POST `/checkin`
+//!   -> final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en` -> 302 -> CDN
 
 mod parse;
 use parse::Url;
@@ -118,7 +114,7 @@ impl Provider for ApkCombo {
 		let variant = choose_variant(&variants, arch)
 			.ok_or_else(|| ProviderError::NotFound(format!("no downloadable variant for {pkg}")))?;
 
-		// Checkin token, then decorate the r2 link.
+		// Checkin token.
 		let checkin = self
 			.fetcher
 			.post_form(Url::from("/checkin").as_str(), &[])
@@ -138,41 +134,84 @@ impl Provider for ApkCombo {
 	}
 }
 
-/// Recaptures `tests/<app>/*.html` through the provider's own requests, so a
-/// fixture is by construction the page the code fetches:
-/// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
-/// check the diff, then `cargo test`.
+/// Fixture file for each URL the provider fetches.
+#[cfg(test)]
+fn fixture_name(url: &str) -> Option<&'static str> {
+	Some(if url.contains("/search?q=") {
+		"search"
+	} else if url.ends_with("/old-versions") {
+		"old-versions"
+	} else if url.contains("/download/phone-") {
+		"download-page"
+	} else if url.ends_with("/dl") {
+		"variants"
+	} else if url.contains("/en/") {
+		"redirect"
+	} else if url.ends_with("/checkin") {
+		"checkin"
+	} else {
+		return None;
+	})
+}
+
+/// `cargo test refresh_fixtures -- --ignored`
 #[cfg(test)]
 mod refresh {
 	use super::*;
 	use crate::providers::fixtures;
 
-	/// Fixture file for each URL the provider fetches; `/checkin` isn't kept.
-	fn fixture_name(url: &str) -> Option<&'static str> {
-		Some(if url.contains("/search?q=") {
-			"search"
-		} else if url.ends_with("/old-versions") {
-			"old-versions"
-		} else if url.contains("/download/phone-") {
-			"download-page"
-		} else if url.ends_with("/dl") {
-			"variants"
-		} else {
-			return None;
-		})
-	}
-
 	#[tokio::test]
 	#[ignore = "network"]
 	async fn refresh_fixtures() {
-		for (app, pkg) in fixtures::APPS {
+		fixtures::refresh_fixtures(fixture_name, |f| ApkCombo { fetcher: f }).await;
+	}
+}
+
+/// Replays the whole resolution flow offline against the recorded fixtures,
+/// asserting on the assembled `DownloadTarget`.
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::providers::fixtures::{APPS, assert_absolute, root};
+
+	#[tokio::test]
+	async fn resolves_from_fixtures() {
+		for (app, pkg) in APPS {
 			let p = ApkCombo {
-				fetcher: HttpFetcher::recording(fixtures::root("apkcombo").join(app), fixture_name),
+				fetcher: HttpFetcher::playback(root("apkcombo").join(app), fixture_name),
 			};
-			// APKCombo search is name-based.
-			p.search(app).await.unwrap();
-			p.versions(pkg).await.unwrap();
-			p.download_url(pkg, None, Arch::ARM64_V8A).await.unwrap();
+
+			let hits = p
+				.search(app)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+			assert!(!hits.is_empty(), "{app}: empty search");
+			assert!(
+				hits.iter().any(|h| h.package == pkg),
+				"{app}: {pkg} missing from search"
+			);
+
+			let vers = p
+				.versions(pkg)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+			assert!(!vers.is_empty(), "{app}: no versions");
+			assert!(
+				vers.iter().any(|v| v.version.contains('.')),
+				"{app}: no dotted versions"
+			);
+
+			let t = p
+				.download_url(pkg, None, Arch::ARM64_V8A)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
+			assert_absolute(&t.url, app);
+			assert!(
+				t.url.contains(pkg) && t.url.contains("package_name="),
+				"{app}: {}",
+				t.url
+			);
+			assert!(!t.version.is_empty(), "{app}: empty version");
 		}
 	}
 }

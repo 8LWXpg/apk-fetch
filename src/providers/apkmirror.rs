@@ -141,49 +141,94 @@ impl Provider for ApkMirror {
 	}
 }
 
-/// Recaptures `tests/<app>/*.html` through the provider's own requests, so a
-/// fixture is by construction the page the code fetches:
-/// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
-/// check the diff, then `cargo test`.
+/// Fixture file for each URL the provider fetches ([`fixture_name`] also maps
+/// what `resolve_url` is asked for, so redirects replay too).
+#[cfg(test)]
+fn fixture_name(url: &str) -> Option<&'static str> {
+	Some(if url.contains("post_type=app_release") {
+		// `s=` last parameter: package ids contain a dot, names don't
+		if url.split("&s=").nth(1).is_some_and(|q| q.contains('.')) {
+			"search-pkg"
+		} else {
+			"search"
+		}
+	} else if url.contains("/download/?key=") {
+		"download-starting"
+	} else if url.ends_with("-android-apk-download/") {
+		"download-page"
+	} else if url.ends_with("-release/") {
+		"version"
+	} else {
+		"app"
+	})
+}
+
+/// `cargo test refresh_fixtures -- --ignored`
 #[cfg(test)]
 mod refresh {
 	use super::*;
 	use crate::providers::fixtures;
 
-	/// Fixture file for each URL the provider fetches.
-	fn fixture_name(url: &str) -> Option<&'static str> {
-		Some(if url.contains("post_type=app_release") {
-			"search"
-		} else if url.contains("/download/?key=") {
-			"download-starting"
-		} else if url.ends_with("-android-apk-download/") {
-			"download-page"
-		} else if url.ends_with("-release/") {
-			"version"
-		} else {
-			"app"
-		})
-	}
-
-	fn recording(app: &str) -> ApkMirror {
-		ApkMirror {
-			fetcher: HttpFetcher::recording(fixtures::root("apkmirror").join(app), fixture_name),
-		}
-	}
-
 	#[tokio::test]
 	#[ignore = "network"]
 	async fn refresh_fixtures() {
-		for (app, pkg) in fixtures::APPS {
-			let p = recording(app);
-			p.versions(pkg).await.unwrap();
-			p.download_url(pkg, None, Arch::ARM64_V8A).await.unwrap();
+		fixtures::refresh_fixtures(fixture_name, |f| ApkMirror { fetcher: f }).await;
+	}
+}
+
+/// Replays the whole resolution flow offline against the recorded fixtures:
+/// every URL the code fetches goes through [`fixture_name`] into a saved page.
+/// The assertions target the assembled `DownloadTarget`, so a mangled URL —
+/// the bug class that a per-parser test sails past — fails here.
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::providers::fixtures::{APPS, assert_absolute, root};
+
+	#[tokio::test]
+	async fn resolves_from_fixtures() {
+		for (app, pkg) in APPS {
+			let p = ApkMirror {
+				fetcher: HttpFetcher::playback(root("apkmirror").join(app), fixture_name),
+			};
+
+			let hits = p
+				.search(app)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+			assert!(!hits.is_empty(), "{app}: empty search");
+			assert!(
+				hits.iter().any(|h| !h.title.trim().is_empty()),
+				"{app}: blank title"
+			);
+
+			let vers = p
+				.versions(pkg)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+			assert!(!vers.is_empty(), "{app}: no versions");
+			assert!(
+				vers.iter().any(|v| v.version.contains('.')
+					&& v.version.starts_with(|c: char| c.is_ascii_digit())),
+				"{app}: no release-shaped versions"
+			);
+
+			let t = p
+				.download_url(pkg, None, Arch::ARM64_V8A)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
+			assert_absolute(&t.url, app);
+			assert!(
+				t.url.contains("download.php") || t.url.contains("downloadr"),
+				"{app}: {}",
+				t.url
+			);
+			assert!(!t.version.is_empty(), "{app}: empty version");
+			assert_eq!(t.provider, ProviderId::Apkmirror);
+			assert!(
+				t.headers.iter().any(|(k, _)| k == "Referer"),
+				"{app}: no Referer"
+			);
 		}
-		// A bogus id only needs the (empty) search page.
-		let err = recording("nonexistent")
-			.search("com.example.does.not.exist.xyz")
-			.await
-			.unwrap_err();
-		assert!(matches!(err, ProviderError::NotFound(_)), "{err}");
 	}
 }

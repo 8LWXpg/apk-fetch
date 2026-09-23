@@ -232,80 +232,6 @@ pub fn parse_final_link(html: &str) -> Result<Url, ProviderError> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::providers::fixtures::{app_dirs, read};
-	use crate::providers::scrape::choose_variant;
-
-	#[test]
-	fn search_pages_parse() {
-		for (app, dir) in app_dirs("apkmirror") {
-			let html = read(&dir, "search.html");
-
-			let hits = parse_search(&html, &app).unwrap_or_else(|e| panic!("{app}: {e}"));
-			// First hit is the phone app, not the automotive/wear spin-off that uploaded last.
-			assert!(
-				hits[0]
-					.release_url
-					.as_str()
-					.contains(&format!("/{app}/{app}-")),
-				"{app}: picked {}",
-				hits[0].release_url
-			);
-			for h in &hits {
-				assert!(
-					h.release_url.as_str().contains("/apk/"),
-					"{app}: {}",
-					h.release_url
-				);
-				assert!(
-					h.release_url.as_str().ends_with("-release/"),
-					"{app}: {}",
-					h.release_url
-				);
-				assert!(!h.title.trim().is_empty(), "{app}: blank title");
-			}
-		}
-	}
-
-	#[test]
-	fn download_chains_parse() {
-		for (app, dir) in app_dirs("apkmirror") {
-			if !dir.join("app.html").is_file() {
-				continue; // search-only dir (e.g. `nonexistent/`)
-			}
-
-			let rows = parse_versions(&read(&dir, "app.html"))
-				.unwrap_or_else(|e| panic!("{app}: parse_versions: {e}"));
-			assert!(!rows.is_empty(), "{app}: no version rows");
-			assert!(
-				rows.iter().any(|r| {
-					r.version.contains('.') && r.version.starts_with(|c: char| c.is_ascii_digit())
-				}),
-				"{app}: no release-number-shaped versions"
-			);
-
-			let variants = parse_variants(&read(&dir, "version.html"));
-			assert!(!variants.is_empty(), "{app}: no variant rows");
-			for v in &variants {
-				assert!(v.url.contains("-download/"), "{app}: {}", v.url);
-			}
-			// If the app publishes any plain APK, arch selection must land on one.
-			let picked = choose_variant(&variants, Arch::ARM64_V8A).expect("a variant");
-			if variants.iter().any(|v| !v.bundle) {
-				assert!(!picked.bundle, "{app}: picked a bundle");
-			}
-
-			let btn = parse_download_button(&read(&dir, "download-page.html"))
-				.unwrap_or_else(|e| panic!("{app}: parse_download_button: {e}"));
-			assert!(btn.as_str().contains("/download/?key="), "{app}: {btn}");
-			let final_url = parse_final_link(&read(&dir, "download-starting.html"))
-				.unwrap_or_else(|e| panic!("{app}: parse_final_link: {e}"));
-			assert!(
-				final_url.as_str().contains("download.php")
-					|| final_url.as_str().contains("downloadr"),
-				"{app}: {final_url}"
-			);
-		}
-	}
 
 	#[test]
 	fn derives_app_slug() {
@@ -362,7 +288,7 @@ mod tests {
 		);
 		assert_eq!(r("Music - YouTube", "youtube-music", "youtube music").0, 0);
 		assert_eq!(r("YouTube 21.3", "youtube", "youtube music").0, 3);
-		// package-id query: coverage ties, uncovered slug tokens pick the phone app
+		// `package-id` query: coverage ties, uncovered slug tokens pick the phone app
 		let pkg = "com.google.android.youtube";
 		let phone = r("YouTube 1.0", "youtube", pkg);
 		let beta = r("YouTube 1.2 beta", "youtube-beta", pkg);

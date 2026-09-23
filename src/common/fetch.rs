@@ -112,18 +112,21 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 	}
 }
 
-/// A curl-backed fetcher with a per-instance throttle. Construct one per provider
-/// so each site gets its own request cadence.
 /// Maps a fetched URL to its fixture file stem, or `None` to skip it.
 #[cfg(test)]
 pub type FixtureName = fn(&str) -> Option<&'static str>;
 
+/// A curl-backed fetcher with a per-instance throttle. Construct one per provider
+/// so each site gets its own request cadence.
 pub struct HttpFetcher {
 	min_gap: Duration,
 	last_request: Mutex<Option<Instant>>,
 	/// Fixture recorder: every 2xx body lands in `dir/<name(url)>.html`.
 	#[cfg(test)]
 	record: Option<(PathBuf, FixtureName)>,
+	/// Fixture player: serves `dir/<name(url)>.html` instead of the network.
+	#[cfg(test)]
+	play: Option<(PathBuf, FixtureName)>,
 }
 
 impl HttpFetcher {
@@ -137,6 +140,8 @@ impl HttpFetcher {
 			last_request: Mutex::new(None),
 			#[cfg(test)]
 			record: None,
+			#[cfg(test)]
+			play: None,
 		}
 	}
 
@@ -148,6 +153,25 @@ impl HttpFetcher {
 			record: Some((dir, name)),
 			..Self::new()
 		}
+	}
+
+	/// [`recording`]'s counterpart: replays the saved fixtures, so provider
+	/// flows run offline against fixed pages.
+	#[cfg(test)]
+	pub fn playback(dir: PathBuf, name: FixtureName) -> Self {
+		Self {
+			play: Some((dir, name)),
+			..Self::with_delay(Duration::ZERO)
+		}
+	}
+
+	/// Read `dir/<name(url)>.html`, mapping the URL exactly as recording did.
+	#[cfg(test)]
+	fn play_body(dir: &Path, name: &FixtureName, url: &str) -> String {
+		let name = name(url).unwrap_or_else(|| panic!("playback: no fixture mapping for {url}"));
+		let file = dir.join(format!("{name}.html"));
+		std::fs::read_to_string(&file)
+			.unwrap_or_else(|e| panic!("playback: {}: {e}", file.display()))
 	}
 
 	async fn throttle(&self) {
@@ -208,6 +232,11 @@ impl HttpFetcher {
 		headers: &[(String, String)],
 		extra_args: &[&str],
 	) -> Result<String, ProviderError> {
+		#[cfg(test)]
+		if let Some((dir, name)) = &self.play {
+			return Ok(Self::play_body(dir, name, url));
+		}
+
 		let mut attempt = 0;
 		loop {
 			self.throttle().await;
@@ -266,6 +295,11 @@ impl HttpFetcher {
 
 	/// Resolve URL redirection. No redirect means the URL is returned unchanged.
 	pub async fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
+		#[cfg(test)]
+		if let Some((dir, name)) = &self.play {
+			return Ok(Self::play_body(dir, name, url));
+		}
+
 		self.throttle().await;
 
 		let output = Self::base_cmd(url, &[], false)
@@ -292,12 +326,23 @@ impl HttpFetcher {
 			)));
 		}
 		let stdout = String::from_utf8_lossy(&output.stdout);
-		Ok(stdout
+		let effective = stdout
 			.rsplit('\n')
 			.next()
 			.unwrap_or_default()
 			.trim()
-			.to_string())
+			.to_string();
+
+		// Record the effective URL where playback's `resolve_url` can read it.
+		#[cfg(test)]
+		if let Some((dir, name)) = &self.record
+			&& let Some(name) = name(url)
+		{
+			std::fs::create_dir_all(dir).expect("fixture dir");
+			std::fs::write(dir.join(format!("{name}.html")), &effective).expect("write fixture");
+		}
+
+		Ok(effective)
 	}
 
 	/// Stream a URL to `dest` (extension-less; the response decides `.apk` vs
@@ -491,7 +536,7 @@ mod tests {
 				.as_deref(),
 			Some("apkm")
 		);
-		// download.php?id=&key= tells us nothing — the file keeps its bare name.
+		// `download.php?id=&key=` tells us nothing — the file keeps its bare name.
 		assert_eq!(
 			ext_from_type_or_url(
 				"application/octet-stream",

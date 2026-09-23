@@ -1,10 +1,16 @@
-//! `<provider>/tests/<app>/*.html` fixture plumbing shared by the parser tests.
+//! `<provider>/tests/<app>/*.html` fixture plumbing shared by the offline
+//! flow tests. Every file is captured by the *same* requests the provider
+//! makes (see each provider's `refresh_fixtures`), so a recorded page is by
+//! construction the one the code fetches; the flow tests then replay them
+//! through `HttpFetcher::playback` and assert on the assembled target.
 //!
-//! For apkcombo the dir name *is* the search query (name-based provider); the
+//! For APKCombo the dir name *is* the search query (name-based provider); the
 //! other two search by package id and treat it as a label.
 
-use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::common::contract::{Arch, Provider, ProviderConst};
+use crate::common::fetch::{FixtureName, HttpFetcher};
 
 /// `(dir name, package id)` captured by every provider's `refresh_fixtures`.
 pub const APPS: [(&str, &str); 2] = [
@@ -20,21 +26,45 @@ pub fn root(provider: &str) -> PathBuf {
 		.join("tests")
 }
 
-/// Every `tests/<app>/` under [`root`] holding a non-empty `search.html`.
-pub fn app_dirs(provider: &str) -> Vec<(String, PathBuf)> {
-	let root = root(provider);
-	let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(&root)
-		.unwrap_or_else(|e| panic!("{}: {e}", root.display()))
-		.filter_map(|e| e.ok().map(|e| e.path()))
-		.filter(|p| p.is_dir() && p.join("search.html").metadata().is_ok_and(|m| m.len() > 0))
-		.map(|p| (p.file_name().unwrap().to_string_lossy().into_owned(), p))
-		.collect();
-	dirs.sort();
-	assert!(!dirs.is_empty(), "no tests/<app>/ fixture dirs in {root:?}");
-	dirs
+/// Assert if `url` is an absolute `https://` URL with a plausible host
+pub fn assert_absolute(url: &str, app: &str) {
+	let rest = url
+		.strip_prefix("https://")
+		.unwrap_or_else(|| panic!("{app}: not absolute https: {url}"));
+
+	let authority = rest.split('/').next().unwrap_or_default();
+	assert!(
+		authority.split('.').count() >= 2,
+		"{app}: host looks wrong: {authority}"
+	);
+
+	let path = rest.split_once('/').map(|x| x.1).unwrap_or_default();
+	assert!(
+		!path.starts_with('/'),
+		"{app}: double slash after host: {url}"
+	);
+	assert!(!rest.contains("https://"), "{app}: repeated scheme: {url}");
 }
 
-pub fn read(dir: &Path, name: &str) -> String {
-	fs::read_to_string(dir.join(name))
-		.unwrap_or_else(|e| panic!("{}: {e}", dir.join(name).display()))
+/// Recapture one provider's `tests/<app>/*.html` by running its canonical
+/// search/versions/download_url flow per app under a recording fetcher.
+pub async fn refresh_fixtures<P: Provider + ProviderConst>(
+	fixture_name: FixtureName,
+	build: impl Fn(HttpFetcher) -> P,
+) {
+	for (app, pkg) in APPS {
+		let p = build(HttpFetcher::recording(
+			root(P::ID.as_str()).join(app),
+			fixture_name,
+		));
+		p.search(app)
+			.await
+			.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+		p.versions(pkg)
+			.await
+			.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+		p.download_url(pkg, None, Arch::ARM64_V8A)
+			.await
+			.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
+	}
 }

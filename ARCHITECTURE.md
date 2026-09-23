@@ -1,9 +1,9 @@
-# apk-fetch architecture
+# Architecture
 
 `apk-fetch` downloads APKs from third-party mirror sites. Each site is isolated
 behind one trait.
 
-## Module layout
+## Module Layout
 
 One crate, one binary, layering is enforced by module visibility rather than by
 separate packages. Items shared across modules are `pub(crate)`.
@@ -33,7 +33,7 @@ Dependency direction is strictly `main → cli → providers → common`; `commo
 reaches for nothing above it. Default provider priority:
 `apkcombo,apkpure,apkmirror`.
 
-## Where the details live
+## Where the Details Live
 
 The per-site resolution flows, the `Provider` trait and error contract, the
 fixture strategy, the choice of `curl`, and the exit-code table are all

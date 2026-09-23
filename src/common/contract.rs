@@ -189,7 +189,7 @@ pub struct VersionInfo {
 	pub uploaded: NaiveDate,
 }
 
-/// A concrete, fetchable APK: URL plus any headers the host requires.
+/// A concrete, downloadable APK: URL plus any headers the host requires.
 #[derive(Debug)]
 pub struct DownloadTarget {
 	pub url: String,
@@ -264,8 +264,8 @@ pub trait Provider: Send + Sync {
 		version: Option<&str>,
 		arch: Arch,
 	) -> Result<DownloadTarget, ProviderError>;
-	/// Lightweight reachability probe for `providers check`. Default: a canned
-	/// search. Override if a provider has a cheaper health endpoint.
+	/// Used for `providers check`. Default: a canned search.
+	/// Override if a provider has a cheaper health endpoint.
 	async fn check(&self) -> Result<(), ProviderError> {
 		self.search("firefox").await.map(|_| ())
 	}

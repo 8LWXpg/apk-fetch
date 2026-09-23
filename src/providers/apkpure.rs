@@ -107,36 +107,79 @@ impl Provider for ApkPure {
 	}
 }
 
-/// Recaptures `tests/<app>/*.html` through the provider's own requests, so a
-/// fixture is by construction the page the code fetches:
-/// `cargo test refresh_fixtures -- --ignored`. Trims the diff-heavy noise;
-/// check the diff, then `cargo test`.
+/// Fixture file for each URL the provider fetches.
+#[cfg(test)]
+fn fixture_name(url: &str) -> Option<&'static str> {
+	Some(if url.contains("/search?q=") {
+		"search"
+	} else if url.ends_with("/versions") {
+		"versions"
+	} else {
+		"app"
+	})
+}
+
+/// `cargo test refresh_fixtures -- --ignored`
 #[cfg(test)]
 mod refresh {
 	use super::*;
 	use crate::providers::fixtures;
 
-	/// Fixture file for each URL the provider fetches.
-	fn fixture_name(url: &str) -> Option<&'static str> {
-		Some(if url.contains("/search?q=") {
-			"search"
-		} else if url.ends_with("/versions") {
-			"versions"
-		} else {
-			"app"
-		})
-	}
-
 	#[tokio::test]
 	#[ignore = "network"]
 	async fn refresh_fixtures() {
-		for (app, pkg) in fixtures::APPS {
+		fixtures::refresh_fixtures(fixture_name, |f| ApkPure { fetcher: f }).await;
+	}
+}
+
+/// Replays the whole resolution flow offline against the recorded fixtures,
+/// asserting on the assembled `DownloadTarget` rather than per-parser output.
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::providers::fixtures::{APPS, assert_absolute, root};
+
+	#[tokio::test]
+	async fn resolves_from_fixtures() {
+		for (app, pkg) in APPS {
 			let p = ApkPure {
-				fetcher: HttpFetcher::recording(fixtures::root("apkpure").join(app), fixture_name),
+				fetcher: HttpFetcher::playback(root("apkpure").join(app), fixture_name),
 			};
-			p.search(pkg).await.unwrap();
-			p.versions(pkg).await.unwrap();
-			p.download_url(pkg, None, Arch::ARM64_V8A).await.unwrap();
+
+			let hits = p
+				.search(app)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+			assert!(!hits.is_empty(), "{app}: empty search");
+			for h in &hits {
+				assert!(h.package.contains('.'), "{app}: {}", h.package);
+				assert!(!h.title.trim().is_empty(), "{app}: blank title");
+			}
+
+			let vers = p
+				.versions(pkg)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+			assert!(!vers.is_empty(), "{app}: no versions");
+			assert!(
+				vers.iter()
+					.all(|v| v.version.contains('.') && !v.version.contains('(')),
+				"{app}: malformed version"
+			);
+
+			let t = p
+				.download_url(pkg, None, Arch::ARM64_V8A)
+				.await
+				.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
+			assert_absolute(&t.url, app);
+			assert!(
+				t.url.starts_with("https://d.apkpure.com/b/APK/") && t.url.contains(pkg),
+				"{app}: {}",
+				t.url
+			);
+			assert!(t.version.contains('.'), "{app}: {}", t.version);
+			assert_eq!(t.arch, Arch::all());
+			assert!(t.headers.is_empty(), "{app}: unexpected headers");
 		}
 	}
 }
