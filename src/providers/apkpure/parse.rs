@@ -20,10 +20,7 @@ fn clean_version(v: &str) -> String {
 fn package_from_href(href: &str) -> Option<String> {
 	let seg = href.trim_end_matches('/').rsplit('/').next()?;
 	let dots = seg.matches('.').count();
-	let ok = dots >= 2
-		&& seg
-			.chars()
-			.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_'));
+	let ok = dots >= 2 && seg.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_'));
 	ok.then(|| seg.to_string())
 }
 

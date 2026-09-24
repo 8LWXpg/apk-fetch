@@ -178,10 +178,7 @@ mod tests {
 			None
 		);
 		// Landed on a different app's page.
-		assert_eq!(
-			slug_from_canonical_url(&"/spotify/com.spotify.music/".into(), yt),
-			None
-		);
+		assert_eq!(slug_from_canonical_url(&"/spotify/com.spotify.music/".into(), yt), None);
 	}
 
 	#[test]

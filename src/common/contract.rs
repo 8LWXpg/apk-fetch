@@ -13,11 +13,8 @@ pub enum ProviderId {
 }
 
 impl ProviderId {
-	pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
-		ProviderId::Apkcombo,
-		ProviderId::Apkpure,
-		ProviderId::Apkmirror,
-	];
+	pub const DEFAULT_PRIORITY: &'static [ProviderId] =
+		&[ProviderId::Apkcombo, ProviderId::Apkpure, ProviderId::Apkmirror];
 
 	pub const fn as_str(&self) -> &'static str {
 		match self {
@@ -227,10 +224,7 @@ pub struct ProviderFailure {
 impl ProviderError {
 	/// Attributes this failure to the provider that raised it.
 	pub fn by(self, provider: ProviderId) -> ProviderFailure {
-		ProviderFailure {
-			provider,
-			source: self,
-		}
+		ProviderFailure { provider, source: self }
 	}
 }
 
@@ -255,12 +249,7 @@ pub trait Provider {
 	/// List available versions.
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
 	/// Resolve a download.
-	fn download_url(
-		&self,
-		pkg: &str,
-		version: Option<&str>,
-		arch: Arch,
-	) -> Result<DownloadTarget, ProviderError>;
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError>;
 	/// Used for `providers check`. Default: a canned search.
 	/// Override if a provider has a cheaper health endpoint.
 	fn check(&self) -> Result<(), ProviderError> {
@@ -325,9 +314,7 @@ impl ProviderRegistry {
 		version: Option<&str>,
 		arch: Arch,
 	) -> Result<DownloadTarget, ProviderFailure> {
-		self.require(id)
-			.download_url(pkg, version, arch)
-			.map_err(|e| e.by(id))
+		self.require(id).download_url(pkg, version, arch).map_err(|e| e.by(id))
 	}
 
 	pub fn check(&self, id: ProviderId) -> Result<(), ProviderFailure> {
@@ -387,10 +374,7 @@ mod tests {
 		assert_eq!("universal".parse(), Ok(Arch::all()));
 		assert_eq!("noarch".parse(), Ok(Arch::all()));
 		// split bundles: the listed set, every ABI == universal
-		assert_eq!(
-			"arm64-v8a, armeabi-v7a, x86, x86_64".parse(),
-			Ok(Arch::all())
-		);
+		assert_eq!("arm64-v8a, armeabi-v7a, x86, x86_64".parse(), Ok(Arch::all()));
 		assert_eq!("arm64-v8a + x86".parse(), Ok(Arch::ARM64_V8A | Arch::X86));
 		// absent or unknown: resolves as universal
 		assert!("".parse::<Arch>().is_err());

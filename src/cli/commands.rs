@@ -1,9 +1,7 @@
 use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
 use crate::common::ui::{error, info, print_message, success, warning};
-use crate::common::{
-	self, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
-};
+use crate::common::{self, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry};
 
 use std::path::Path;
 
@@ -24,12 +22,7 @@ fn emit<T>(provider: ProviderId, rows: &[T], label: fn(&T) -> &str, sub: fn(&T) 
 	println!("{}", provider.as_str().cyan().bold());
 	let w = col_width(rows, |r| Some(label(r)));
 	for r in rows {
-		println!(
-			"{} {}  {}",
-			"•".cyan().bold(),
-			pad(label(r), w).bold(),
-			sub(r).dimmed()
-		);
+		println!("{} {}  {}", "•".cyan().bold(), pad(label(r), w).bold(), sub(r).dimmed());
 	}
 }
 
@@ -83,10 +76,7 @@ where
 		for (id, rows) in merged {
 			map.insert(id.to_string(), serde_json::to_value(rows)?);
 		}
-		println!(
-			"{}",
-			serde_json::to_string_pretty(&serde_json::Value::Object(map))?
-		);
+		println!("{}", serde_json::to_string_pretty(&serde_json::Value::Object(map))?);
 	} else if !hit {
 		return Err(last.unwrap_or(AppError {
 			code: EXIT_NOT_FOUND,

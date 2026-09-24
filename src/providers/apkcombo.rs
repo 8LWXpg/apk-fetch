@@ -6,8 +6,7 @@ mod parse;
 use parse::Url;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId,
-	VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{choose_variant, query, version_matches};
@@ -71,12 +70,7 @@ impl Provider for ApkCombo {
 			.collect())
 	}
 
-	fn download_url(
-		&self,
-		pkg: &str,
-		version: Option<&str>,
-		arch: Arch,
-	) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
 		let slug = self.slug_for(pkg)?;
 
 		// Locate the download page (carries the `xid` build tag).
@@ -101,9 +95,7 @@ impl Provider for ApkCombo {
 			.ok_or_else(|| ProviderError::NotFound(format!("no downloadable variant for {pkg}")))?;
 
 		// Checkin token.
-		let checkin = self
-			.fetcher
-			.post_form(Url::from("/checkin").as_str(), &[])?;
+		let checkin = self.fetcher.post_form(Url::from("/checkin").as_str(), &[])?;
 
 		Ok(DownloadTarget {
 			url: parse::final_download_url(&variant.url, &checkin, pkg),
@@ -166,18 +158,14 @@ mod tests {
 				fetcher: HttpFetcher::playback(root("apkcombo").join(app), fixture_name),
 			};
 
-			let hits = p
-				.search(app)
-				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+			let hits = p.search(app).unwrap_or_else(|e| panic!("{app}: search: {e}"));
 			assert!(!hits.is_empty(), "{app}: empty search");
 			assert!(
 				hits.iter().any(|h| h.package == pkg),
 				"{app}: {pkg} missing from search"
 			);
 
-			let vers = p
-				.versions(pkg)
-				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+			let vers = p.versions(pkg).unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 			assert!(!vers.is_empty(), "{app}: no versions");
 			assert!(
 				vers.iter().any(|v| v.version.contains('.')),

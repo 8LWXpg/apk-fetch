@@ -47,8 +47,7 @@ pub fn parse_search(html: &str, query: &str) -> Result<Vec<SearchHit>, ProviderE
 }
 
 fn tokens(s: &str) -> impl Iterator<Item = &str> {
-	s.split(|c: char| !c.is_alphanumeric())
-		.filter(|t| !t.is_empty())
+	s.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty())
 }
 
 /// How well one query token is matched by one title token; 0 = exact.
@@ -80,17 +79,10 @@ fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
 	let q = query.to_lowercase();
 	let title = strip_version(&hit.title).to_lowercase();
 	let coverage = tokens(&q)
-		.map(|qt| {
-			tokens(&title)
-				.map(|tt| token_match(qt, tt))
-				.min()
-				.unwrap_or(3)
-		})
+		.map(|qt| tokens(&title).map(|tt| token_match(qt, tt)).min().unwrap_or(3))
 		.sum();
 	let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
-	let extra = tokens(repo)
-		.filter(|st| !tokens(&q).any(|qt| qt == *st))
-		.count() as u8;
+	let extra = tokens(repo).filter(|st| !tokens(&q).any(|qt| qt == *st)).count() as u8;
 	(coverage, extra)
 }
 
@@ -266,22 +258,11 @@ mod tests {
 	fn rank_covers_query_tokens_then_penalises_slug_extras() {
 		let r = |title: &str, repo: &str, q: &str| rank(&hit(title, repo), q);
 		// coverage rungs: whole word < prefix < substring < absent
-		assert!(
-			r("LINE Camera 1.0", "line-camera", "line") < r("Lineage2M 1.0", "lineage2m", "line")
-		);
-		assert!(
-			r("Lineage2M 1.0", "lineage2m", "line")
-				< r("Airline Manager", "airline-manager", "line")
-		);
-		assert!(
-			r("Airline Manager", "airline-manager", "line")
-				< r("Korean Air My", "korean-air-my", "line")
-		);
+		assert!(r("LINE Camera 1.0", "line-camera", "line") < r("Lineage2M 1.0", "lineage2m", "line"));
+		assert!(r("Lineage2M 1.0", "lineage2m", "line") < r("Airline Manager", "airline-manager", "line"));
+		assert!(r("Airline Manager", "airline-manager", "line") < r("Korean Air My", "korean-air-my", "line"));
 		// every query token counts, order-free; the version token never does
-		assert_eq!(
-			r("YouTube Music 9.3", "youtube-music", "youtube music"),
-			(0, 0)
-		);
+		assert_eq!(r("YouTube Music 9.3", "youtube-music", "youtube music"), (0, 0));
 		assert_eq!(r("Music - YouTube", "youtube-music", "youtube music").0, 0);
 		assert_eq!(r("YouTube 21.3", "youtube", "youtube music").0, 3);
 		// `package-id` query: coverage ties, uncovered slug tokens pick the phone app
@@ -292,13 +273,7 @@ mod tests {
 		assert!(phone < beta && beta < wear);
 		// Asking for the channel lifts its penalty; `dev` in a package id is a
 		// token, not a substring, so `com.devhd.x` doesn't pick `-dev`
-		assert!(
-			r("YouTube beta", "youtube-beta", "youtube beta")
-				< r("YouTube", "youtube", "youtube beta")
-		);
-		assert!(
-			r("Feedly", "feedly", "com.devhd.feedly")
-				< r("Feedly", "feedly-dev", "com.devhd.feedly")
-		);
+		assert!(r("YouTube beta", "youtube-beta", "youtube beta") < r("YouTube", "youtube", "youtube beta"));
+		assert!(r("Feedly", "feedly", "com.devhd.feedly") < r("Feedly", "feedly-dev", "com.devhd.feedly"));
 	}
 }

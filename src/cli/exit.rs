@@ -48,11 +48,7 @@ impl From<ResolveError> for AppError {
 	fn from(e: ResolveError) -> Self {
 		// If every provider failed the same way, that's the reason; otherwise a
 		// network failure is the one the user can act on.
-		let codes: Vec<u8> = e
-			.attempts
-			.iter()
-			.map(|f| provider_error_code(&f.source))
-			.collect();
+		let codes: Vec<u8> = e.attempts.iter().map(|f| provider_error_code(&f.source)).collect();
 		let code = match codes.first() {
 			Some(&c) if codes.iter().all(|&x| x == c) => c,
 			_ if codes.contains(&EXIT_NETWORK) => EXIT_NETWORK,

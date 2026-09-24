@@ -104,9 +104,7 @@ fn ext_from_type_or_url(content_type: &str, url: &str) -> Option<String> {
 /// Served extension from curl's stdout (header dumps, then the `-w` line after
 /// [`META_SENTINEL`]): `Content-Disposition`, then `Content-Type`, then final URL.
 fn served_ext(curl_stdout: &str) -> Option<String> {
-	let (headers, meta) = curl_stdout
-		.rsplit_once(META_SENTINEL)
-		.unwrap_or((curl_stdout, ""));
+	let (headers, meta) = curl_stdout.rsplit_once(META_SENTINEL).unwrap_or((curl_stdout, ""));
 	let (ct, url) = meta.split_once('\t').unwrap_or((meta, ""));
 	ext_from_disposition(headers).or_else(|| ext_from_type_or_url(ct, url))
 }
@@ -246,12 +244,7 @@ impl HttpFetcher {
 		self.request(url, &[], &extra_ref)
 	}
 
-	fn request(
-		&self,
-		url: &str,
-		headers: &[(String, String)],
-		extra_args: &[&str],
-	) -> Result<String, ProviderError> {
+	fn request(&self, url: &str, headers: &[(String, String)], extra_args: &[&str]) -> Result<String, ProviderError> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
 			return Ok(Self::play_body(dir, name, url));
@@ -267,11 +260,7 @@ impl HttpFetcher {
 				.args(extra_args)
 				.args(["-w", "\n%{http_code}"])
 				.output()
-				.map_err(|e| {
-					network_err(format!(
-						"could not run `curl` (is it installed and on PATH?): {e}"
-					))
-				})?;
+				.map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
 
 			cancelled!();
 
@@ -308,8 +297,7 @@ impl HttpFetcher {
 				&& let Some(name) = name(url)
 			{
 				fs::create_dir_all(dir).expect("fixture dir");
-				fs::write(dir.join(format!("{name}.html")), trim_html(body))
-					.expect("write fixture");
+				fs::write(dir.join(format!("{name}.html")), trim_html(body)).expect("write fixture");
 			}
 			return Ok(body.to_string());
 		}
@@ -334,11 +322,7 @@ impl HttpFetcher {
 				"\n%{url_effective}",
 			])
 			.output()
-			.map_err(|e| {
-				network_err(format!(
-					"could not run `curl` (is it installed and on PATH?): {e}"
-				))
-			})?;
+			.map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
 
 		cancelled!();
 
@@ -350,12 +334,7 @@ impl HttpFetcher {
 			)));
 		}
 		let stdout = String::from_utf8_lossy(&output.stdout);
-		let effective = stdout
-			.rsplit('\n')
-			.next()
-			.unwrap_or_default()
-			.trim()
-			.to_string();
+		let effective = stdout.rsplit('\n').next().unwrap_or_default().trim().to_string();
 
 		// Record the effective URL where playback's `resolve_url` can read it.
 		#[cfg(test)]
@@ -385,11 +364,7 @@ impl HttpFetcher {
 		result
 	}
 
-	fn curl_to_file(
-		url: &str,
-		headers: &[(String, String)],
-		dest: &Path,
-	) -> Result<PathBuf, ProviderError> {
+	fn curl_to_file(url: &str, headers: &[(String, String)], dest: &Path) -> Result<PathBuf, ProviderError> {
 		let mut child = Self::base_cmd(url, headers, true)
 			.args(["--fail", "--retry", &MAX_RETRIES.to_string(), "-o"])
 			.arg(dest)
@@ -402,11 +377,7 @@ impl HttpFetcher {
 			.stdout(Stdio::piped())
 			.stderr(Stdio::inherit())
 			.spawn()
-			.map_err(|e| {
-				network_err(format!(
-					"could not run `curl` (is it installed and on PATH?): {e}"
-				))
-			})?;
+			.map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
 
 		// Ctrl+C reaches curl too (same foreground process group), so by the
 		// time wait() returns either it died with us or the download finished.
@@ -487,18 +458,9 @@ mod tests {
 	#[test]
 	fn status_mapping() {
 		let u = "https://x/y";
-		assert!(matches!(
-			map_http_status(403, u),
-			Some(ProviderError::Blocked)
-		));
-		assert!(matches!(
-			map_http_status(429, u),
-			Some(ProviderError::Blocked)
-		));
-		assert!(matches!(
-			map_http_status(404, u),
-			Some(ProviderError::NotFound(_))
-		));
+		assert!(matches!(map_http_status(403, u), Some(ProviderError::Blocked)));
+		assert!(matches!(map_http_status(429, u), Some(ProviderError::Blocked)));
+		assert!(matches!(map_http_status(404, u), Some(ProviderError::NotFound(_))));
 		assert!(map_http_status(200, u).is_none());
 	}
 
@@ -521,8 +483,7 @@ mod tests {
 	#[test]
 	fn disposition_rfc5987_and_junk() {
 		assert_eq!(
-			ext_from_disposition("Content-Disposition: attachment; filename*=UTF-8''app.xapk")
-				.as_deref(),
+			ext_from_disposition("Content-Disposition: attachment; filename*=UTF-8''app.xapk").as_deref(),
 			Some("xapk")
 		);
 		// A hostile name can't smuggle a path or a long suffix through.
@@ -549,16 +510,12 @@ mod tests {
 			Some("apk")
 		);
 		assert_eq!(
-			ext_from_type_or_url("application/octet-stream", "https://cdn/x.apkm?token=1")
-				.as_deref(),
+			ext_from_type_or_url("application/octet-stream", "https://cdn/x.apkm?token=1").as_deref(),
 			Some("apkm")
 		);
 		// `download.php?id=&key=` tells us nothing — the file keeps its bare name.
 		assert_eq!(
-			ext_from_type_or_url(
-				"application/octet-stream",
-				"https://a/download.php?id=1&key=z"
-			),
+			ext_from_type_or_url("application/octet-stream", "https://a/download.php?id=1&key=z"),
 			None
 		);
 	}

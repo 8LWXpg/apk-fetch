@@ -39,28 +39,17 @@ pub fn assert_absolute(url: &str, app: &str) {
 	);
 
 	let path = rest.split_once('/').map(|x| x.1).unwrap_or_default();
-	assert!(
-		!path.starts_with('/'),
-		"{app}: double slash after host: {url}"
-	);
+	assert!(!path.starts_with('/'), "{app}: double slash after host: {url}");
 	assert!(!rest.contains("https://"), "{app}: repeated scheme: {url}");
 }
 
 /// Recapture one provider's `tests/<app>/*.html` by running its canonical
 /// search/versions/download_url flow per app under a recording fetcher.
-pub fn refresh_fixtures<P: Provider + ProviderConst>(
-	fixture_name: FixtureName,
-	build: impl Fn(HttpFetcher) -> P,
-) {
+pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName, build: impl Fn(HttpFetcher) -> P) {
 	for (app, pkg) in APPS {
-		let p = build(HttpFetcher::recording(
-			root(P::ID.as_str()).join(app),
-			fixture_name,
-		));
-		p.search(app)
-			.unwrap_or_else(|e| panic!("{app}: search: {e}"));
-		p.versions(pkg)
-			.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+		let p = build(HttpFetcher::recording(root(P::ID.as_str()).join(app), fixture_name));
+		p.search(app).unwrap_or_else(|e| panic!("{app}: search: {e}"));
+		p.versions(pkg).unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 		p.download_url(pkg, None, Arch::ARM64_V8A)
 			.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
 	}

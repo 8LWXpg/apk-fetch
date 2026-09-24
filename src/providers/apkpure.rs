@@ -8,8 +8,7 @@ mod parse;
 use parse::Url;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId,
-	VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{query, version_matches};
@@ -62,12 +61,7 @@ impl Provider for ApkPure {
 			.collect())
 	}
 
-	fn download_url(
-		&self,
-		pkg: &str,
-		version: Option<&str>,
-		_arch: Arch,
-	) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, _arch: Arch) -> Result<DownloadTarget, ProviderError> {
 		// `code` is APKPure `versionCode`, `None` means "latest".
 		let (code, label) = match version {
 			Some(want) => {
@@ -75,15 +69,11 @@ impl Provider for ApkPure {
 					.version_rows(pkg)?
 					.into_iter()
 					.find(|r| version_matches(&r.version, want))
-					.ok_or_else(|| {
-						ProviderError::NotFound(format!("no version {want} for {pkg}"))
-					})?;
+					.ok_or_else(|| ProviderError::NotFound(format!("no version {want} for {pkg}")))?;
 				(Some(r.code), r.version)
 			}
 			None => {
-				let html = self
-					.fetcher
-					.get_text(Url::from(format!("/x/{pkg}")).as_str())?;
+				let html = self.fetcher.get_text(Url::from(format!("/x/{pkg}")).as_str())?;
 				let label = parse::latest_version(&html)
 					.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))?;
 				(None, label)
@@ -139,22 +129,17 @@ mod tests {
 				fetcher: HttpFetcher::playback(root("apkpure").join(app), fixture_name),
 			};
 
-			let hits = p
-				.search(app)
-				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+			let hits = p.search(app).unwrap_or_else(|e| panic!("{app}: search: {e}"));
 			assert!(!hits.is_empty(), "{app}: empty search");
 			for h in &hits {
 				assert!(h.package.contains('.'), "{app}: {}", h.package);
 				assert!(!h.title.trim().is_empty(), "{app}: blank title");
 			}
 
-			let vers = p
-				.versions(pkg)
-				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+			let vers = p.versions(pkg).unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 			assert!(!vers.is_empty(), "{app}: no versions");
 			assert!(
-				vers.iter()
-					.all(|v| v.version.contains('.') && !v.version.contains('(')),
+				vers.iter().all(|v| v.version.contains('.') && !v.version.contains('(')),
 				"{app}: malformed version"
 			);
 

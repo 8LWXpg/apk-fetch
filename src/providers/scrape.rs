@@ -75,10 +75,7 @@ pub fn version_token(name: &str) -> String {
 /// Matches exact, or leading dotted-segment prefix. Not a substring test:
 /// `"21.36.45".contains("1.3")` is true and would resolve the wrong build.
 pub fn version_matches(version: &str, want: &str) -> bool {
-	version == want
-		|| version
-			.strip_prefix(want)
-			.is_some_and(|rest| rest.starts_with('.'))
+	version == want || version.strip_prefix(want).is_some_and(|rest| rest.starts_with('.'))
 }
 
 #[cfg(test)]
@@ -109,23 +106,14 @@ mod tests {
 			variant(false, Arch::ARM64_V8A),
 			variant(false, Arch::all()),
 		];
-		assert_eq!(
-			choose_variant(&vs, Arch::ARM64_V8A).unwrap().arch,
-			Arch::ARM64_V8A
-		);
-		assert_eq!(
-			choose_variant(&vs, Arch::ARMEABI_V7A).unwrap().arch,
-			Arch::ARMEABI_V7A
-		);
+		assert_eq!(choose_variant(&vs, Arch::ARM64_V8A).unwrap().arch, Arch::ARM64_V8A);
+		assert_eq!(choose_variant(&vs, Arch::ARMEABI_V7A).unwrap().arch, Arch::ARMEABI_V7A);
 		let picked = choose_variant(&vs, Arch::X86).unwrap();
 		assert!(!picked.bundle);
 		assert_eq!(picked.arch, Arch::all());
 
 		let bundles = vec![variant(true, Arch::all()), variant(true, Arch::ARM64_V8A)];
-		assert_eq!(
-			choose_variant(&bundles, Arch::ARM64_V8A).unwrap().arch,
-			Arch::ARM64_V8A
-		);
+		assert_eq!(choose_variant(&bundles, Arch::ARM64_V8A).unwrap().arch, Arch::ARM64_V8A);
 	}
 
 	#[test]

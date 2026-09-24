@@ -11,23 +11,14 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
 
 	match cli.command {
 		Command::Search { query, .. } => commands::search(&registry, &query, cli.json),
-		Command::Versions { package_id, .. } => {
-			commands::versions(&registry, &package_id, cli.json)
-		}
+		Command::Versions { package_id, .. } => commands::versions(&registry, &package_id, cli.json),
 		Command::Get {
 			package_id,
 			version,
 			arch,
 			output,
 			..
-		} => commands::get(
-			&registry,
-			&package_id,
-			version.as_deref(),
-			arch,
-			&output,
-			cli.json,
-		),
+		} => commands::get(&registry, &package_id, version.as_deref(), arch, &output, cli.json),
 		Command::Providers { cmd } => match cmd {
 			ProvidersCmd::List => commands::providers_list(&registry, cli.json),
 			ProvidersCmd::Check { .. } => commands::providers_check(&registry, cli.json),
@@ -46,9 +37,7 @@ fn build_registry(cmd: &Command) -> ProviderRegistry {
 		Command::Versions { all: true, .. } => all(),
 		Command::Versions { provider, .. } if provider.is_empty() => top(),
 		Command::Versions { provider, .. } => provider.clone(),
-		Command::Get {
-			provider: Some(p), ..
-		} => vec![*p],
+		Command::Get { provider: Some(p), .. } => vec![*p],
 		Command::Get { priority, .. } if !priority.is_empty() => priority.clone(),
 		Command::Providers {
 			cmd: ProvidersCmd::Check { name: Some(n) },

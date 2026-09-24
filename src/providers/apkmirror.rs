@@ -6,8 +6,7 @@ mod parse;
 use parse::Url;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId,
-	VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape;
@@ -70,20 +69,13 @@ impl Provider for ApkMirror {
 
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 		let hit = self.top_app_hit(pkg)?;
-		let slug = parse::app_slug(&hit.release_url)
-			.ok_or_else(|| ProviderError::ParseError("bad release url".into()))?;
-		let html = self
-			.fetcher
-			.get_text(Url::from(format!("/apk/{slug}/")).as_str())?;
+		let slug =
+			parse::app_slug(&hit.release_url).ok_or_else(|| ProviderError::ParseError("bad release url".into()))?;
+		let html = self.fetcher.get_text(Url::from(format!("/apk/{slug}/")).as_str())?;
 		parse::parse_versions(&html)
 	}
 
-	fn download_url(
-		&self,
-		pkg: &str,
-		version: Option<&str>,
-		arch: Arch,
-	) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
 		// 1. Locate the version page.
 		let version_page = match version {
 			None => self.top_app_hit(pkg)?.release_url,
@@ -106,14 +98,9 @@ impl Provider for ApkMirror {
 			// Single-build app: the site lists no ABI, so it's a universal APK.
 			(version.map(str::to_string), Arch::all(), version_html)
 		} else {
-			let v = scrape::choose_variant(&variants, arch).ok_or_else(|| {
-				ProviderError::NotFound(format!("no downloadable variant for {pkg}"))
-			})?;
-			(
-				Some(v.version.clone()),
-				v.arch,
-				self.fetcher.get_text(&v.url)?,
-			)
+			let v = scrape::choose_variant(&variants, arch)
+				.ok_or_else(|| ProviderError::NotFound(format!("no downloadable variant for {pkg}")))?;
+			(Some(v.version.clone()), v.arch, self.fetcher.get_text(&v.url)?)
 		};
 
 		// 3. Download page -> "starting" page -> APK URL.
@@ -183,22 +170,15 @@ mod tests {
 				fetcher: HttpFetcher::playback(root("apkmirror").join(app), fixture_name),
 			};
 
-			let hits = p
-				.search(app)
-				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
+			let hits = p.search(app).unwrap_or_else(|e| panic!("{app}: search: {e}"));
 			assert!(!hits.is_empty(), "{app}: empty search");
-			assert!(
-				hits.iter().any(|h| !h.title.trim().is_empty()),
-				"{app}: blank title"
-			);
+			assert!(hits.iter().any(|h| !h.title.trim().is_empty()), "{app}: blank title");
 
-			let vers = p
-				.versions(pkg)
-				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
+			let vers = p.versions(pkg).unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 			assert!(!vers.is_empty(), "{app}: no versions");
 			assert!(
-				vers.iter().any(|v| v.version.contains('.')
-					&& v.version.starts_with(|c: char| c.is_ascii_digit())),
+				vers.iter()
+					.any(|v| v.version.contains('.') && v.version.starts_with(|c: char| c.is_ascii_digit())),
 				"{app}: no release-shaped versions"
 			);
 
@@ -213,10 +193,7 @@ mod tests {
 			);
 			assert!(!t.version.is_empty(), "{app}: empty version");
 			assert_eq!(t.provider, ProviderId::Apkmirror);
-			assert!(
-				t.headers.iter().any(|(k, _)| k == "Referer"),
-				"{app}: no Referer"
-			);
+			assert!(t.headers.iter().any(|(k, _)| k == "Referer"), "{app}: no Referer");
 		}
 	}
 }
