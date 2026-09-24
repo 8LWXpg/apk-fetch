@@ -7,7 +7,7 @@ use crate::common::{Provider, ProviderId, ProviderRegistry};
 use crate::providers::{ApkCombo, ApkMirror, ApkPure};
 
 pub fn dispatch(cli: Cli) -> Result<(), AppError> {
-	let registry = build_registry(&selection(&cli.command));
+	let registry = build_registry(&cli.command);
 
 	match cli.command {
 		Command::Search { query, .. } => commands::search(&registry, &query, cli.json),
@@ -35,11 +35,11 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
 	}
 }
 
-/// Which providers this invocation may use, in order.
-fn selection(cmd: &Command) -> Vec<ProviderId> {
+/// Build [`ProviderRegistry`] in struct `impl` would cause circular import.
+fn build_registry(cmd: &Command) -> ProviderRegistry {
 	let all = || ProviderId::DEFAULT_PRIORITY.to_vec();
 	let top = || vec![ProviderId::DEFAULT_PRIORITY[0]];
-	match cmd {
+	let order = match cmd {
 		Command::Search { all: true, .. } => all(),
 		Command::Search { provider, .. } if provider.is_empty() => top(),
 		Command::Search { provider, .. } => provider.clone(),
@@ -54,24 +54,17 @@ fn selection(cmd: &Command) -> Vec<ProviderId> {
 			cmd: ProvidersCmd::Check { name: Some(n) },
 		} => vec![*n],
 		_ => all(),
-	}
-}
+	};
 
-impl From<&ProviderId> for Box<dyn Provider> {
-	fn from(id: &ProviderId) -> Self {
-		match id {
-			ProviderId::Apkmirror => Box::new(ApkMirror::default()),
-			ProviderId::Apkpure => Box::new(ApkPure::default()),
-			ProviderId::Apkcombo => Box::new(ApkCombo::default()),
-		}
-	}
-}
-
-/// Build [`ProviderRegistry`] in struct `impl` would cause circular import.
-fn build_registry(order: &[ProviderId]) -> ProviderRegistry {
 	order
 		.iter()
-		.map(<Box<dyn Provider>>::from)
-		.collect::<Vec<_>>()
-		.into()
+		.copied()
+		.map(|id| -> Box<dyn Provider> {
+			match id {
+				ProviderId::Apkmirror => Box::new(ApkMirror::default()),
+				ProviderId::Apkpure => Box::new(ApkPure::default()),
+				ProviderId::Apkcombo => Box::new(ApkCombo::default()),
+			}
+		})
+		.collect::<ProviderRegistry>()
 }

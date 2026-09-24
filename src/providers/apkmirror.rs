@@ -122,12 +122,12 @@ impl Provider for ApkMirror {
 		let apk_url = parse::parse_final_link(&starting_html)?;
 
 		Ok(DownloadTarget {
-			url: apk_url.into_string(),
+			url: apk_url.to_string(),
 			version: resolved_version.unwrap_or_else(|| "latest".to_string()),
 			arch: resolved_arch,
 			provider: NAME,
 			// APKMirror `download.php` checks the referring download page.
-			headers: vec![("Referer".to_string(), button_url.into_string())],
+			headers: vec![("Referer".to_string(), button_url.to_string())],
 		})
 	}
 }

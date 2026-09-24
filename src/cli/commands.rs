@@ -1,15 +1,15 @@
-use std::path::Path;
+use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
 use crate::common::ui::{error, info, print_message, success, warning};
 use crate::common::{
-	AppResult, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
-	VersionInfo,
+	self, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
 };
+
+use std::path::Path;
+
 use anyhow::anyhow;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
-
-use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
 
 fn pad(s: &str, w: usize) -> String {
 	format!("{s}{}", " ".repeat(w.saturating_sub(s.width())))
@@ -20,48 +20,36 @@ fn col_width<'a, T>(rows: &'a [T], f: impl Fn(&'a T) -> Option<&'a str>) -> usiz
 	rows.iter().filter_map(f).map(str::width).max().unwrap_or(0)
 }
 
-fn render_results(provider: ProviderId, results: &[AppResult]) {
+fn emit<T>(provider: ProviderId, rows: &[T], label: fn(&T) -> &str, sub: fn(&T) -> String) {
 	println!("{}", provider.as_str().cyan().bold());
-	let tw = col_width(results, |r| Some(r.title.as_str()));
-	for r in results {
-		let mut line = format!("{} {}", "•".cyan().bold(), pad(&r.title, tw).bold());
-		line.push_str(&format!("  {}", r.package.dimmed()));
-		println!("{line}");
-	}
-}
-
-fn render_versions(provider: ProviderId, list: &[VersionInfo]) {
-	println!("{}", provider.as_str().cyan().bold());
-	let vw = col_width(list, |v| Some(v.version.as_str()));
-	for v in list {
-		let line = format!("{} {}", "•".cyan().bold(), pad(&v.version, vw).bold());
-		println!("{line}  {}", v.uploaded.to_string().dimmed());
-	}
-}
-
-/// Per-provider rows in priority order, serialized as a JSON object.
-struct ByProvider<T>(Vec<(ProviderId, Vec<T>)>);
-
-impl<T: serde::Serialize> serde::Serialize for ByProvider<T> {
-	fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-		s.collect_map(self.0.iter().map(|(id, rows)| (id, rows)))
+	let w = col_width(rows, |r| Some(label(r)));
+	for r in rows {
+		println!(
+			"{} {}  {}",
+			"•".cyan().bold(),
+			pad(label(r), w).bold(),
+			sub(r).dimmed()
+		);
 	}
 }
 
 /// Run `fetch` against every selected provider, rendering (or merging, for
 /// JSON) whatever each one returns. Errors are reported but don't stop the
 /// sweep; if nothing came back at all, the last one becomes the exit status.
-fn fan_out<T, F>(
+fn fan_out<T, F, R>(
 	registry: &ProviderRegistry,
 	json: bool,
 	verb: &str,
+	notfound: &str,
 	mut fetch: F,
-	render: fn(ProviderId, &[T]),
-) -> Result<ByProvider<T>, Option<AppError>>
+	mut render: R,
+) -> Result<(), AppError>
 where
+	T: serde::Serialize,
 	F: FnMut(ProviderId) -> Result<Vec<T>, ProviderFailure>,
+	R: FnMut(ProviderId, &[T]),
 {
-	let mut merged = ByProvider(Vec::new());
+	let mut merged = Vec::new();
 	let mut hit = false;
 	let mut last = None;
 	for id in registry.names() {
@@ -77,7 +65,7 @@ where
 			Ok(rows) => {
 				hit = true;
 				if json {
-					merged.0.push((id, rows));
+					merged.push((id, rows));
 				} else {
 					render(id, &rows);
 				}
@@ -90,47 +78,44 @@ where
 			}
 		}
 	}
-	if hit { Ok(merged) } else { Err(last) }
+	if json {
+		let mut map = serde_json::Map::new();
+		for (id, rows) in merged {
+			map.insert(id.to_string(), serde_json::to_value(rows)?);
+		}
+		println!(
+			"{}",
+			serde_json::to_string_pretty(&serde_json::Value::Object(map))?
+		);
+	} else if !hit {
+		return Err(last.unwrap_or(AppError {
+			code: EXIT_NOT_FOUND,
+			source: anyhow!("{notfound}"),
+		}));
+	}
+	Ok(())
 }
 
 pub fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Result<(), AppError> {
-	let merged = fan_out(
+	fan_out(
 		registry,
 		json,
 		"searching",
+		&format!("no results for '{query}'"),
 		|id| registry.search(id, query),
-		render_results,
+		|id, rows| emit(id, rows, |r| r.title.as_str(), |r| r.package.to_string()),
 	)
-	.map_err(|last| {
-		last.unwrap_or(AppError {
-			code: EXIT_NOT_FOUND,
-			source: anyhow!("no results for '{query}'"),
-		})
-	})?;
-	if json {
-		println!("{}", serde_json::to_string_pretty(&merged)?);
-	}
-	Ok(())
 }
 
 pub fn versions(registry: &ProviderRegistry, pkg: &str, json: bool) -> Result<(), AppError> {
-	let merged = fan_out(
+	fan_out(
 		registry,
 		json,
 		"listing versions from",
+		&format!("no versions for '{pkg}'"),
 		|id| registry.versions(id, pkg),
-		render_versions,
+		|id, rows| emit(id, rows, |v| v.version.as_str(), |v| v.uploaded.to_string()),
 	)
-	.map_err(|last| {
-		last.unwrap_or(AppError {
-			code: EXIT_NOT_FOUND,
-			source: anyhow!("no versions for '{pkg}'"),
-		})
-	})?;
-	if json {
-		println!("{}", serde_json::to_string_pretty(&merged)?);
-	}
-	Ok(())
 }
 
 pub fn get(
@@ -141,8 +126,7 @@ pub fn get(
 	output: &Path,
 	json: bool,
 ) -> Result<(), AppError> {
-	let names = registry.names();
-	let order: Vec<&str> = names.iter().map(|p| p.as_str()).collect();
+	let order: Vec<&str> = registry.names().iter().map(|p| p.as_str()).collect();
 	info!("resolving {} ({})...", pkg, order.join(" -> "));
 	let target = registry.resolve_with_fallback(pkg, version, arch)?;
 
@@ -150,11 +134,7 @@ pub fn get(
 		code: EXIT_NETWORK,
 		source: anyhow!("{e}"),
 	})?;
-	let dest = output.join(crate::common::download_filename(
-		pkg,
-		&target.version,
-		target.arch,
-	));
+	let dest = output.join(common::download_filename(pkg, &target.version, target.arch));
 
 	info!(
 		"downloading {} {} ({}) from {} ({})",
@@ -210,36 +190,23 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
 }
 
 pub fn providers_check(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
-	let targets = registry.names();
-	let mut results = Vec::new();
-	let mut worst: Option<AppError> = None;
-	for id in targets {
-		match registry.check(id) {
-			Ok(()) => {
-				results.push((id, "ok".to_string()));
-				if !json {
-					success!("{}: ok", id);
-				}
+	let names = registry.names();
+	let mut rows = Vec::new();
+	for id in &names {
+		if let Err(f) = registry.check(*id) {
+			if json {
+				rows.push(serde_json::json!({ "name": id, "status": format!("{}", f.source) }));
+			} else {
+				error!("{f}");
 			}
-			Err(f) => {
-				results.push((id, format!("{}", f.source)));
-				if !json {
-					error!("{f}");
-				}
-				worst = Some(f.into());
-			}
+		} else if json {
+			rows.push(serde_json::json!({ "name": id, "status": "ok" }));
+		} else {
+			success!("{}: ok", id);
 		}
 	}
 	if json {
-		let rows: Vec<_> = results
-			.iter()
-			.map(|(n, s)| serde_json::json!({ "name": n, "status": s }))
-			.collect();
 		println!("{}", serde_json::to_string_pretty(&rows)?);
 	}
-	// Only fail the process when a single named provider was checked and failed.
-	match worst {
-		Some(e) if results.len() == 1 => Err(e),
-		_ => Ok(()),
-	}
+	Ok(())
 }

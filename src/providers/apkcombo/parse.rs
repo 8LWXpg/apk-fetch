@@ -22,7 +22,7 @@ pub struct SearchHit {
 /// The `{slug}` from a canonical app URL `{BASE}/{slug}/{pkg}/`. `None` when the
 /// URL isn't that shape, or is still the `{LOOKUP_LOCALE}` one we asked for.
 pub fn slug_from_canonical_url(url: &Url, pkg: &str) -> Option<String> {
-	let path = url.path()?;
+	let path = url.path();
 	match path.split('/').collect::<Vec<_>>()[..] {
 		[slug, p] if p == pkg && slug != LOOKUP_LOCALE => Some(slug.to_string()),
 		_ => None,
@@ -145,7 +145,7 @@ pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
 					.next()
 					.is_some_and(|t| text_of(t).eq_ignore_ascii_case("xapk")),
 				arch,
-				url: Url::from(href).into_string(),
+				url: Url::from(href).to_string(),
 			});
 		}
 	}

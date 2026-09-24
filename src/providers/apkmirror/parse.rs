@@ -96,7 +96,7 @@ fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
 
 /// `{BASE}/apk/{org}/{repo}/{repo}-x-y-release/` -> `{org}/{repo}`.
 pub fn app_slug(release_url: &Url) -> Option<&str> {
-	let path = release_url.path()?.strip_prefix("apk/")?;
+	let path = release_url.path().strip_prefix("apk/")?;
 	let mut segs = path.split('/');
 	let org = segs.next()?;
 	let repo = segs.next()?;
@@ -204,7 +204,7 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 					.get(1)
 					.and_then(|c| text_of(*c).parse().ok())
 					.unwrap_or(Arch::all()),
-				url: Url::from(href).into_string(),
+				url: Url::from(href).to_string(),
 			})
 		})
 		.collect()
@@ -236,14 +236,10 @@ mod tests {
 	#[test]
 	fn derives_app_slug() {
 		assert_eq!(
-			app_slug(&"https://www.apkmirror.com/apk/mozilla/firefox/firefox-x-y-release/".into()),
+			app_slug(&"/apk/mozilla/firefox/firefox-x-y-release/".into()),
 			Some("mozilla/firefox")
 		);
-		assert_eq!(
-			app_slug(&"https://www.apkmirror.com/apk/mozilla/".into()),
-			None
-		);
-		assert_eq!(app_slug(&"https://elsewhere/apk/a/b/".into()), None);
+		assert_eq!(app_slug(&"/apk/mozilla/".into()), None);
 	}
 
 	#[test]

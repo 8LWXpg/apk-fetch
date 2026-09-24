@@ -19,7 +19,7 @@ impl ProviderId {
 		ProviderId::Apkmirror,
 	];
 
-	pub const fn as_str(self) -> &'static str {
+	pub const fn as_str(&self) -> &'static str {
 		match self {
 			ProviderId::Apkmirror => "apkmirror",
 			ProviderId::Apkpure => "apkpure",
@@ -92,18 +92,17 @@ impl<C: ProviderConst> Url<C> {
 		&self.url
 	}
 
-	pub fn into_string(self) -> String {
-		self.url
-	}
-
 	/// Path without `BASE_URL` and leading/ending `/`.
-	pub fn path(&self) -> Option<&str> {
-		Some(self.url.strip_prefix(C::BASE_URL)?.trim_matches('/'))
+	pub fn path(&self) -> &str {
+		self.url
+			.strip_prefix(C::BASE_URL)
+			.unwrap() // Strip only fails if URL is in invalid state.
+			.trim_matches('/')
 	}
 }
 
 bitflags::bitflags! {
-	/// A split bundle carrying every ABI
+/// A split bundle carrying every ABI
 	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 	pub struct Arch: u8 {
 		const ARM64_V8A = 1;
@@ -356,9 +355,11 @@ impl ProviderRegistry {
 	}
 }
 
-impl From<Vec<Box<dyn Provider>>> for ProviderRegistry {
-	fn from(value: Vec<Box<dyn Provider>>) -> Self {
-		Self { providers: value }
+impl FromIterator<Box<dyn Provider>> for ProviderRegistry {
+	fn from_iter<T: IntoIterator<Item = Box<dyn Provider>>>(iter: T) -> Self {
+		Self {
+			providers: iter.into_iter().collect(),
+		}
 	}
 }
 
