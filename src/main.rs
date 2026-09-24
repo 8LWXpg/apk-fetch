@@ -8,19 +8,15 @@ use clap::Parser;
 
 use crate::{
 	cli::{Cli, dispatch},
+	common::fetch::install_ctrlc,
 	common::ui::error,
 };
 
 fn main() -> ExitCode {
+	install_ctrlc();
 	let cli = Cli::parse();
-	// Single CLI invocation, all I/O-bound (curl subprocesses, sequential
-	// provider calls) — a current-thread runtime is plenty.
-	let rt = tokio::runtime::Builder::new_current_thread()
-		.enable_all()
-		.build()
-		.expect("tokio runtime");
 
-	match rt.block_on(dispatch(cli)) {
+	match dispatch(cli) {
 		Ok(()) => ExitCode::SUCCESS,
 		Err(e) => {
 			error!("{:#}", e.source);

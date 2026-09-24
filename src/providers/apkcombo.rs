@@ -11,7 +11,6 @@ use crate::common::contract::{
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{choose_variant, query, version_matches};
-use async_trait::async_trait;
 
 #[derive(Default)]
 pub struct ApkCombo {
@@ -20,25 +19,19 @@ pub struct ApkCombo {
 
 impl ApkCombo {
 	/// `/en/{pkg}/` 301 to the `/{slug}/{pkg}/`.
-	async fn slug_for(&self, pkg: &str) -> Result<String, ProviderError> {
+	fn slug_for(&self, pkg: &str) -> Result<String, ProviderError> {
 		let final_url: Url = self
 			.fetcher
-			.resolve_url(parse::app_url(parse::LOOKUP_LOCALE, pkg, "").as_str())
-			.await?
+			.resolve_url(parse::app_url(parse::LOOKUP_LOCALE, pkg, "").as_str())?
 			.into();
 		parse::slug_from_canonical_url(&final_url, pkg)
 			.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))
 	}
 
-	async fn version_rows(
-		&self,
-		slug: &str,
-		pkg: &str,
-	) -> Result<Vec<parse::VersionRow>, ProviderError> {
+	fn version_rows(&self, slug: &str, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(parse::app_url(slug, pkg, "old-versions").as_str())
-			.await?;
+			.get_text(parse::app_url(slug, pkg, "old-versions").as_str())?;
 		parse::parse_versions(&html)
 	}
 }
@@ -48,17 +41,15 @@ impl ProviderConst for ApkCombo {
 	const BASE_URL: &'static str = "https://apkcombo.com";
 }
 
-#[async_trait]
 impl Provider for ApkCombo {
 	fn id(&self) -> ProviderId {
 		Self::ID
 	}
 
-	async fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())
-			.await?;
+			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?;
 		Ok(parse::parse_search(&html)?
 			.into_iter()
 			.map(|h| AppResult {
@@ -68,11 +59,10 @@ impl Provider for ApkCombo {
 			.collect())
 	}
 
-	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
-		let slug = self.slug_for(pkg).await?;
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+		let slug = self.slug_for(pkg)?;
 		Ok(self
-			.version_rows(&slug, pkg)
-			.await?
+			.version_rows(&slug, pkg)?
 			.into_iter()
 			.map(|r| VersionInfo {
 				version: r.version,
@@ -81,35 +71,31 @@ impl Provider for ApkCombo {
 			.collect())
 	}
 
-	async fn download_url(
+	fn download_url(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
 		arch: Arch,
 	) -> Result<DownloadTarget, ProviderError> {
-		let slug = self.slug_for(pkg).await?;
+		let slug = self.slug_for(pkg)?;
 
 		// Locate the download page (carries the `xid` build tag).
 		let dl_page = match version {
 			None => parse::app_url(&slug, pkg, "download/phone-latest-apk"),
 			Some(want) => self
-				.version_rows(&slug, pkg)
-				.await?
+				.version_rows(&slug, pkg)?
 				.into_iter()
 				.find(|r| version_matches(&r.version, want))
 				.map(|r| r.download_page_url)
 				.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?,
 		};
-		let xid = parse::extract_xid(&self.fetcher.get_text(dl_page.as_str()).await?);
+		let xid = parse::extract_xid(&self.fetcher.get_text(dl_page.as_str())?);
 
 		// POST the variant fragment.
-		let frag = self
-			.fetcher
-			.post_form(
-				parse::app_url(&slug, pkg, &format!("{xid}/dl")).as_str(),
-				&[("package_name", pkg), ("version", version.unwrap_or(""))],
-			)
-			.await?;
+		let frag = self.fetcher.post_form(
+			parse::app_url(&slug, pkg, &format!("{xid}/dl")).as_str(),
+			&[("package_name", pkg), ("version", version.unwrap_or(""))],
+		)?;
 		let variants = parse::parse_variants(&frag)?;
 		let variant = choose_variant(&variants, arch)
 			.ok_or_else(|| ProviderError::NotFound(format!("no downloadable variant for {pkg}")))?;
@@ -117,8 +103,7 @@ impl Provider for ApkCombo {
 		// Checkin token.
 		let checkin = self
 			.fetcher
-			.post_form(Url::from("/checkin").as_str(), &[])
-			.await?;
+			.post_form(Url::from("/checkin").as_str(), &[])?;
 
 		Ok(DownloadTarget {
 			url: parse::final_download_url(&variant.url, &checkin, pkg),
@@ -160,10 +145,10 @@ mod refresh {
 	use super::*;
 	use crate::providers::fixtures;
 
-	#[tokio::test]
+	#[test]
 	#[ignore = "network"]
-	async fn refresh_fixtures() {
-		fixtures::refresh_fixtures(fixture_name, |f| ApkCombo { fetcher: f }).await;
+	fn refresh_fixtures() {
+		fixtures::refresh_fixtures(fixture_name, |f| ApkCombo { fetcher: f });
 	}
 }
 
@@ -174,8 +159,8 @@ mod tests {
 	use super::*;
 	use crate::providers::fixtures::{APPS, assert_absolute, root};
 
-	#[tokio::test]
-	async fn resolves_from_fixtures() {
+	#[test]
+	fn resolves_from_fixtures() {
 		for (app, pkg) in APPS {
 			let p = ApkCombo {
 				fetcher: HttpFetcher::playback(root("apkcombo").join(app), fixture_name),
@@ -183,7 +168,6 @@ mod tests {
 
 			let hits = p
 				.search(app)
-				.await
 				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
 			assert!(!hits.is_empty(), "{app}: empty search");
 			assert!(
@@ -193,7 +177,6 @@ mod tests {
 
 			let vers = p
 				.versions(pkg)
-				.await
 				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 			assert!(!vers.is_empty(), "{app}: no versions");
 			assert!(
@@ -203,7 +186,6 @@ mod tests {
 
 			let t = p
 				.download_url(pkg, None, Arch::ARM64_V8A)
-				.await
 				.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
 			assert_absolute(&t.url, app);
 			assert!(

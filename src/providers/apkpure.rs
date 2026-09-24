@@ -13,7 +13,6 @@ use crate::common::contract::{
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{query, version_matches};
-use async_trait::async_trait;
 
 #[derive(Default)]
 pub struct ApkPure {
@@ -21,11 +20,10 @@ pub struct ApkPure {
 }
 
 impl ApkPure {
-	async fn version_rows(&self, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
+	fn version_rows(&self, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(Url::from(format!("/x/{pkg}/versions")).as_str())
-			.await?;
+			.get_text(Url::from(format!("/x/{pkg}/versions")).as_str())?;
 		parse::parse_versions(&html)
 	}
 }
@@ -35,17 +33,15 @@ impl ProviderConst for ApkPure {
 	const BASE_URL: &'static str = "https://apkpure.com";
 }
 
-#[async_trait]
 impl Provider for ApkPure {
 	fn id(&self) -> ProviderId {
 		Self::ID
 	}
 
-	async fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
 		let html = self
 			.fetcher
-			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())
-			.await?;
+			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?;
 		Ok(parse::parse_search(&html)?
 			.into_iter()
 			.map(|h| AppResult {
@@ -55,10 +51,9 @@ impl Provider for ApkPure {
 			.collect())
 	}
 
-	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 		Ok(self
-			.version_rows(pkg)
-			.await?
+			.version_rows(pkg)?
 			.into_iter()
 			.map(|r| VersionInfo {
 				version: r.version,
@@ -67,7 +62,7 @@ impl Provider for ApkPure {
 			.collect())
 	}
 
-	async fn download_url(
+	fn download_url(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
@@ -77,8 +72,7 @@ impl Provider for ApkPure {
 		let (code, label) = match version {
 			Some(want) => {
 				let r = self
-					.version_rows(pkg)
-					.await?
+					.version_rows(pkg)?
 					.into_iter()
 					.find(|r| version_matches(&r.version, want))
 					.ok_or_else(|| {
@@ -89,8 +83,7 @@ impl Provider for ApkPure {
 			None => {
 				let html = self
 					.fetcher
-					.get_text(Url::from(format!("/x/{pkg}")).as_str())
-					.await?;
+					.get_text(Url::from(format!("/x/{pkg}")).as_str())?;
 				let label = parse::latest_version(&html)
 					.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))?;
 				(None, label)
@@ -125,10 +118,10 @@ mod refresh {
 	use super::*;
 	use crate::providers::fixtures;
 
-	#[tokio::test]
+	#[test]
 	#[ignore = "network"]
-	async fn refresh_fixtures() {
-		fixtures::refresh_fixtures(fixture_name, |f| ApkPure { fetcher: f }).await;
+	fn refresh_fixtures() {
+		fixtures::refresh_fixtures(fixture_name, |f| ApkPure { fetcher: f });
 	}
 }
 
@@ -139,8 +132,8 @@ mod tests {
 	use super::*;
 	use crate::providers::fixtures::{APPS, assert_absolute, root};
 
-	#[tokio::test]
-	async fn resolves_from_fixtures() {
+	#[test]
+	fn resolves_from_fixtures() {
 		for (app, pkg) in APPS {
 			let p = ApkPure {
 				fetcher: HttpFetcher::playback(root("apkpure").join(app), fixture_name),
@@ -148,7 +141,6 @@ mod tests {
 
 			let hits = p
 				.search(app)
-				.await
 				.unwrap_or_else(|e| panic!("{app}: search: {e}"));
 			assert!(!hits.is_empty(), "{app}: empty search");
 			for h in &hits {
@@ -158,7 +150,6 @@ mod tests {
 
 			let vers = p
 				.versions(pkg)
-				.await
 				.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 			assert!(!vers.is_empty(), "{app}: no versions");
 			assert!(
@@ -169,7 +160,6 @@ mod tests {
 
 			let t = p
 				.download_url(pkg, None, Arch::ARM64_V8A)
-				.await
 				.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
 			assert_absolute(&t.url, app);
 			assert!(

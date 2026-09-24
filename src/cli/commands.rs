@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use std::future::Future;
-
 use crate::common::ui::{error, info, print_message, success, warning};
 use crate::common::{
 	AppResult, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry,
@@ -53,7 +51,7 @@ impl<T: serde::Serialize> serde::Serialize for ByProvider<T> {
 /// Run `fetch` against every selected provider, rendering (or merging, for
 /// JSON) whatever each one returns. Errors are reported but don't stop the
 /// sweep; if nothing came back at all, the last one becomes the exit status.
-async fn fan_out<T, F, Fut>(
+fn fan_out<T, F>(
 	registry: &ProviderRegistry,
 	json: bool,
 	verb: &str,
@@ -61,8 +59,7 @@ async fn fan_out<T, F, Fut>(
 	render: fn(ProviderId, &[T]),
 ) -> Result<ByProvider<T>, Option<AppError>>
 where
-	F: FnMut(ProviderId) -> Fut,
-	Fut: Future<Output = Result<Vec<T>, ProviderFailure>>,
+	F: FnMut(ProviderId) -> Result<Vec<T>, ProviderFailure>,
 {
 	let mut merged = ByProvider(Vec::new());
 	let mut hit = false;
@@ -71,7 +68,7 @@ where
 		if !json {
 			info!("{} {}...", verb, id);
 		}
-		match fetch(id).await {
+		match fetch(id) {
 			Ok(rows) if rows.is_empty() => {
 				if !json {
 					warning!("{}: no results", id);
@@ -96,11 +93,7 @@ where
 	if hit { Ok(merged) } else { Err(last) }
 }
 
-pub async fn search(
-	registry: &ProviderRegistry,
-	query: &str,
-	json: bool,
-) -> Result<(), AppError> {
+pub fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Result<(), AppError> {
 	let merged = fan_out(
 		registry,
 		json,
@@ -108,7 +101,6 @@ pub async fn search(
 		|id| registry.search(id, query),
 		render_results,
 	)
-	.await
 	.map_err(|last| {
 		last.unwrap_or(AppError {
 			code: EXIT_NOT_FOUND,
@@ -121,11 +113,7 @@ pub async fn search(
 	Ok(())
 }
 
-pub async fn versions(
-	registry: &ProviderRegistry,
-	pkg: &str,
-	json: bool,
-) -> Result<(), AppError> {
+pub fn versions(registry: &ProviderRegistry, pkg: &str, json: bool) -> Result<(), AppError> {
 	let merged = fan_out(
 		registry,
 		json,
@@ -133,7 +121,6 @@ pub async fn versions(
 		|id| registry.versions(id, pkg),
 		render_versions,
 	)
-	.await
 	.map_err(|last| {
 		last.unwrap_or(AppError {
 			code: EXIT_NOT_FOUND,
@@ -146,7 +133,7 @@ pub async fn versions(
 	Ok(())
 }
 
-pub async fn get(
+pub fn get(
 	registry: &ProviderRegistry,
 	pkg: &str,
 	version: Option<&str>,
@@ -157,7 +144,7 @@ pub async fn get(
 	let names = registry.names();
 	let order: Vec<&str> = names.iter().map(|p| p.as_str()).collect();
 	info!("resolving {} ({})...", pkg, order.join(" -> "));
-	let target = registry.resolve_with_fallback(pkg, version, arch).await?;
+	let target = registry.resolve_with_fallback(pkg, version, arch)?;
 
 	std::fs::create_dir_all(output).map_err(|e| AppError {
 		code: EXIT_NETWORK,
@@ -180,7 +167,6 @@ pub async fn get(
 	let fetcher = HttpFetcher::new();
 	let saved = fetcher
 		.download_to_file(&target.url, &target.headers, &dest)
-		.await
 		.map_err(|e| AppError {
 			code: super::exit::provider_error_code(&e),
 			// A cancel isn't a failure — don't dress it up as one.
@@ -223,15 +209,12 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
 	Ok(())
 }
 
-pub async fn providers_check(
-	registry: &ProviderRegistry,
-	json: bool,
-) -> Result<(), AppError> {
+pub fn providers_check(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
 	let targets = registry.names();
 	let mut results = Vec::new();
 	let mut worst: Option<AppError> = None;
 	for id in targets {
-		match registry.check(id).await {
+		match registry.check(id) {
 			Ok(()) => {
 				results.push((id, "ok".to_string()));
 				if !json {

@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-use async_trait::async_trait;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
@@ -250,15 +249,14 @@ pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
 		.collect()
 }
 
-#[async_trait]
-pub trait Provider: Send + Sync {
+pub trait Provider {
 	fn id(&self) -> ProviderId;
 	/// User facing search. Should not used by `download_url`.
-	async fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
+	fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
 	/// List available versions.
-	async fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
 	/// Resolve a download.
-	async fn download_url(
+	fn download_url(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
@@ -266,8 +264,8 @@ pub trait Provider: Send + Sync {
 	) -> Result<DownloadTarget, ProviderError>;
 	/// Used for `providers check`. Default: a canned search.
 	/// Override if a provider has a cheaper health endpoint.
-	async fn check(&self) -> Result<(), ProviderError> {
-		self.search("firefox").await.map(|_| ())
+	fn check(&self) -> Result<(), ProviderError> {
+		self.search("firefox").map(|_| ())
 	}
 }
 
@@ -313,23 +311,15 @@ impl ProviderRegistry {
 			.as_ref()
 	}
 
-	pub async fn search(
-		&self,
-		id: ProviderId,
-		query: &str,
-	) -> Result<Vec<AppResult>, ProviderFailure> {
-		self.require(id).search(query).await.map_err(|e| e.by(id))
+	pub fn search(&self, id: ProviderId, query: &str) -> Result<Vec<AppResult>, ProviderFailure> {
+		self.require(id).search(query).map_err(|e| e.by(id))
 	}
 
-	pub async fn versions(
-		&self,
-		id: ProviderId,
-		pkg: &str,
-	) -> Result<Vec<VersionInfo>, ProviderFailure> {
-		self.require(id).versions(pkg).await.map_err(|e| e.by(id))
+	pub fn versions(&self, id: ProviderId, pkg: &str) -> Result<Vec<VersionInfo>, ProviderFailure> {
+		self.require(id).versions(pkg).map_err(|e| e.by(id))
 	}
 
-	pub async fn download_url(
+	pub fn download_url(
 		&self,
 		id: ProviderId,
 		pkg: &str,
@@ -338,16 +328,15 @@ impl ProviderRegistry {
 	) -> Result<DownloadTarget, ProviderFailure> {
 		self.require(id)
 			.download_url(pkg, version, arch)
-			.await
 			.map_err(|e| e.by(id))
 	}
 
-	pub async fn check(&self, id: ProviderId) -> Result<(), ProviderFailure> {
-		self.require(id).check().await.map_err(|e| e.by(id))
+	pub fn check(&self, id: ProviderId) -> Result<(), ProviderFailure> {
+		self.require(id).check().map_err(|e| e.by(id))
 	}
 
 	/// Tries every provider in priority order, returning the first success.
-	pub async fn resolve_with_fallback(
+	pub fn resolve_with_fallback(
 		&self,
 		pkg: &str,
 		version: Option<&str>,
@@ -355,7 +344,7 @@ impl ProviderRegistry {
 	) -> Result<DownloadTarget, ResolveError> {
 		let mut attempts = Vec::new();
 		for id in self.names() {
-			match self.download_url(id, pkg, version, arch).await {
+			match self.download_url(id, pkg, version, arch) {
 				Ok(target) => return Ok(target),
 				Err(f) => attempts.push(f),
 			}

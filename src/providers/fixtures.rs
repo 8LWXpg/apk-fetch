@@ -48,7 +48,7 @@ pub fn assert_absolute(url: &str, app: &str) {
 
 /// Recapture one provider's `tests/<app>/*.html` by running its canonical
 /// search/versions/download_url flow per app under a recording fetcher.
-pub async fn refresh_fixtures<P: Provider + ProviderConst>(
+pub fn refresh_fixtures<P: Provider + ProviderConst>(
 	fixture_name: FixtureName,
 	build: impl Fn(HttpFetcher) -> P,
 ) {
@@ -58,13 +58,10 @@ pub async fn refresh_fixtures<P: Provider + ProviderConst>(
 			fixture_name,
 		));
 		p.search(app)
-			.await
 			.unwrap_or_else(|e| panic!("{app}: search: {e}"));
 		p.versions(pkg)
-			.await
 			.unwrap_or_else(|e| panic!("{app}: versions: {e}"));
 		p.download_url(pkg, None, Arch::ARM64_V8A)
-			.await
 			.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
 	}
 }

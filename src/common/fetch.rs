@@ -1,12 +1,14 @@
 //! HTTP via the system `curl`.
 
+use std::cell::Cell;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+use std::{fmt, fs, io, thread};
 
 use crate::common::contract::ProviderError;
-use tokio::process::Command;
-use tokio::sync::Mutex;
 
 pub const REQUEST_TIMEOUT_SECS: u64 = 30;
 pub const CONNECT_TIMEOUT_SECS: u64 = 20;
@@ -31,12 +33,38 @@ const BLOCK_SIGNATURES: &[&str] = &[
 	"Enable JavaScript and cookies to continue",
 ];
 
-fn network_err(e: impl std::fmt::Display) -> ProviderError {
-	ProviderError::Network(std::io::Error::other(e.to_string()))
-}
-
 fn looks_blocked(body: &str) -> bool {
 	BLOCK_SIGNATURES.iter().any(|sig| body.contains(sig))
+}
+
+/// Set by the Ctrl+C handler.
+static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+pub fn install_ctrlc() {
+	let _ = ctrlc::set_handler(move || INTERRUPTED.store(true, Ordering::SeqCst));
+}
+
+fn interrupted() -> bool {
+	INTERRUPTED.load(Ordering::SeqCst)
+}
+
+/// Bail if cancelled.
+macro_rules! cancelled {
+	() => {
+		if interrupted() {
+			return Err(ProviderError::Cancelled);
+		}
+	};
+	(clear) => {
+		if interrupted() {
+			eprintln!();
+			return Err(ProviderError::Cancelled);
+		}
+	};
+}
+
+fn network_err(e: impl fmt::Display) -> ProviderError {
+	ProviderError::Network(io::Error::other(e.to_string()))
 }
 
 /// Extension from the last `Content-Disposition` filename in a header dump.
@@ -85,13 +113,12 @@ fn served_ext(curl_stdout: &str) -> Option<String> {
 
 /// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
 /// `PK\x05\x06`. An empty or missing file fails the check.
-async fn starts_with_zip_magic(path: &Path) -> bool {
-	use tokio::io::AsyncReadExt;
-	let Ok(mut f) = tokio::fs::File::open(path).await else {
+fn starts_with_zip_magic(path: &Path) -> bool {
+	let Ok(mut f) = fs::File::open(path) else {
 		return false;
 	};
 	let mut head = [0u8; 4];
-	match f.read_exact(&mut head).await {
+	match f.read_exact(&mut head) {
 		Ok(_) => head == *b"PK\x03\x04" || head == *b"PK\x05\x06",
 		Err(_) => false,
 	}
@@ -120,7 +147,7 @@ pub type FixtureName = fn(&str) -> Option<&'static str>;
 /// so each site gets its own request cadence.
 pub struct HttpFetcher {
 	min_gap: Duration,
-	last_request: Mutex<Option<Instant>>,
+	last_request: Cell<Option<Instant>>,
 	/// Fixture recorder: every 2xx body lands in `dir/<name(url)>.html`.
 	#[cfg(test)]
 	record: Option<(PathBuf, FixtureName)>,
@@ -137,7 +164,7 @@ impl HttpFetcher {
 	pub fn with_delay(min_gap: Duration) -> Self {
 		Self {
 			min_gap,
-			last_request: Mutex::new(None),
+			last_request: Cell::new(None),
 			#[cfg(test)]
 			record: None,
 			#[cfg(test)]
@@ -170,19 +197,17 @@ impl HttpFetcher {
 	fn play_body(dir: &Path, name: &FixtureName, url: &str) -> String {
 		let name = name(url).unwrap_or_else(|| panic!("playback: no fixture mapping for {url}"));
 		let file = dir.join(format!("{name}.html"));
-		std::fs::read_to_string(&file)
-			.unwrap_or_else(|e| panic!("playback: {}: {e}", file.display()))
+		fs::read_to_string(&file).unwrap_or_else(|e| panic!("playback: {}: {e}", file.display()))
 	}
 
-	async fn throttle(&self) {
-		let mut last = self.last_request.lock().await;
-		if let Some(prev) = *last {
-			let elapsed = prev.elapsed();
-			if elapsed < self.min_gap {
-				tokio::time::sleep(self.min_gap - elapsed).await;
-			}
+	fn throttle(&self) {
+		let prev = self.last_request.get();
+		if let Some(p) = prev
+			&& p.elapsed() < self.min_gap
+		{
+			thread::sleep(self.min_gap - p.elapsed());
 		}
-		*last = Some(Instant::now());
+		self.last_request.set(Some(Instant::now()));
 	}
 
 	fn base_cmd(url: &str, headers: &[(String, String)], progress: bool) -> Command {
@@ -203,30 +228,25 @@ impl HttpFetcher {
 			cmd.arg("-H").arg(format!("{k}: {v}"));
 		}
 		cmd.arg(url);
-		cmd.kill_on_drop(true);
 		cmd
 	}
 
-	pub async fn get_text(&self, url: &str) -> Result<String, ProviderError> {
-		self.request(url, &[], &[]).await
+	pub fn get_text(&self, url: &str) -> Result<String, ProviderError> {
+		self.request(url, &[], &[])
 	}
 
 	/// POST `url` with a `multipart/form-data` body (curl `-F`).
-	pub async fn post_form(
-		&self,
-		url: &str,
-		form: &[(&str, &str)],
-	) -> Result<String, ProviderError> {
+	pub fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<String, ProviderError> {
 		let mut extra: Vec<String> = vec!["-X".into(), "POST".into()];
 		for (k, v) in form {
 			extra.push("-F".into());
 			extra.push(format!("{k}={v}"));
 		}
 		let extra_ref: Vec<&str> = extra.iter().map(String::as_str).collect();
-		self.request(url, &[], &extra_ref).await
+		self.request(url, &[], &extra_ref)
 	}
 
-	async fn request(
+	fn request(
 		&self,
 		url: &str,
 		headers: &[(String, String)],
@@ -239,25 +259,27 @@ impl HttpFetcher {
 
 		let mut attempt = 0;
 		loop {
-			self.throttle().await;
+			cancelled!();
+			self.throttle();
 
 			let output = Self::base_cmd(url, headers, false)
 				.args(["--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
 				.args(extra_args)
 				.args(["-w", "\n%{http_code}"])
 				.output()
-				.await
 				.map_err(|e| {
 					network_err(format!(
 						"could not run `curl` (is it installed and on PATH?): {e}"
 					))
 				})?;
 
+			cancelled!();
+
 			if !output.status.success() {
 				let code = output.status.code();
 				if curl_exit_is_transient(code) && attempt < MAX_RETRIES {
 					attempt += 1;
-					tokio::time::sleep(RETRY_BASE_BACKOFF * attempt).await;
+					thread::sleep(RETRY_BASE_BACKOFF * attempt);
 					continue;
 				}
 				return Err(network_err(format!(
@@ -273,7 +295,7 @@ impl HttpFetcher {
 			if let Some(err) = map_http_status(status, url) {
 				if matches!(err, ProviderError::Network(_)) && attempt < MAX_RETRIES {
 					attempt += 1;
-					tokio::time::sleep(RETRY_BASE_BACKOFF * attempt).await;
+					thread::sleep(RETRY_BASE_BACKOFF * attempt);
 					continue;
 				}
 				return Err(err);
@@ -285,8 +307,8 @@ impl HttpFetcher {
 			if let Some((dir, name)) = &self.record
 				&& let Some(name) = name(url)
 			{
-				std::fs::create_dir_all(dir).expect("fixture dir");
-				std::fs::write(dir.join(format!("{name}.html")), trim_html(body))
+				fs::create_dir_all(dir).expect("fixture dir");
+				fs::write(dir.join(format!("{name}.html")), trim_html(body))
 					.expect("write fixture");
 			}
 			return Ok(body.to_string());
@@ -294,13 +316,14 @@ impl HttpFetcher {
 	}
 
 	/// Resolve URL redirection. No redirect means the URL is returned unchanged.
-	pub async fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
+	pub fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
 			return Ok(Self::play_body(dir, name, url));
 		}
 
-		self.throttle().await;
+		cancelled!();
+		self.throttle();
 
 		let output = Self::base_cmd(url, &[], false)
 			.args([
@@ -311,12 +334,13 @@ impl HttpFetcher {
 				"\n%{url_effective}",
 			])
 			.output()
-			.await
 			.map_err(|e| {
 				network_err(format!(
 					"could not run `curl` (is it installed and on PATH?): {e}"
 				))
 			})?;
+
+		cancelled!();
 
 		if !output.status.success() {
 			return Err(network_err(format!(
@@ -338,8 +362,8 @@ impl HttpFetcher {
 		if let Some((dir, name)) = &self.record
 			&& let Some(name) = name(url)
 		{
-			std::fs::create_dir_all(dir).expect("fixture dir");
-			std::fs::write(dir.join(format!("{name}.html")), &effective).expect("write fixture");
+			fs::create_dir_all(dir).expect("fixture dir");
+			fs::write(dir.join(format!("{name}.html")), &effective).expect("write fixture");
 		}
 
 		Ok(effective)
@@ -347,21 +371,21 @@ impl HttpFetcher {
 
 	/// Stream a URL to `dest` (extension-less; the response decides `.apk` vs
 	/// `.xapk`/`.apkm`). Returns the path written. Failure leaves no file.
-	pub async fn download_to_file(
+	pub fn download_to_file(
 		&self,
 		url: &str,
 		headers: &[(String, String)],
 		dest: &Path,
 	) -> Result<PathBuf, ProviderError> {
-		self.throttle().await;
-		let result = Self::curl_to_file(url, headers, dest).await;
+		self.throttle();
+		let result = Self::curl_to_file(url, headers, dest);
 		if result.is_err() {
-			let _ = tokio::fs::remove_file(dest).await;
+			let _ = fs::remove_file(dest);
 		}
 		result
 	}
 
-	async fn curl_to_file(
+	fn curl_to_file(
 		url: &str,
 		headers: &[(String, String)],
 		dest: &Path,
@@ -384,19 +408,14 @@ impl HttpFetcher {
 				))
 			})?;
 
-		let status = tokio::select! {
-			status = child.wait() => status.map_err(network_err)?,
-			_ = tokio::signal::ctrl_c() => {
-				let _ = child.kill().await;
-				eprintln!();
-				return Err(ProviderError::Cancelled);
-			}
-		};
+		// Ctrl+C reaches curl too (same foreground process group), so by the
+		// time wait() returns either it died with us or the download finished.
+		let status = child.wait().map_err(network_err)?;
+		cancelled!(clear);
 
 		let mut stdout_buf = String::new();
 		if let Some(mut s) = child.stdout.take() {
-			use tokio::io::AsyncReadExt;
-			let _ = s.read_to_string(&mut stdout_buf).await;
+			let _ = s.read_to_string(&mut stdout_buf);
 		}
 
 		if !status.success() {
@@ -404,7 +423,7 @@ impl HttpFetcher {
 			return Err(network_err(format!("curl download failed ({status})")));
 		}
 		// Non-ZIP payload = error/landing page that came back 200.
-		if !starts_with_zip_magic(dest).await {
+		if !starts_with_zip_magic(dest) {
 			return Err(network_err(
 				"downloaded file is not an APK (server returned a non-package response)",
 			));
@@ -414,9 +433,7 @@ impl HttpFetcher {
 		};
 		// Appended, not `set_extension`: the stem holds dotted version numbers.
 		let target = PathBuf::from(format!("{}.{ext}", dest.display()));
-		tokio::fs::rename(dest, &target)
-			.await
-			.map_err(network_err)?;
+		fs::rename(dest, &target).map_err(network_err)?;
 		Ok(target)
 	}
 }
