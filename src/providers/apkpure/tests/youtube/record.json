@@ -1,0 +1,709 @@
+{
+  "hits": [
+    {
+      "package": "com.google.android.youtube",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.zhiliaoapp.musically",
+      "title": "TikTok"
+    },
+    {
+      "package": "com.google.android.youtube.tv",
+      "title": "YouTube for Android TV"
+    },
+    {
+      "package": "com.ss.android.ugc.trill",
+      "title": "TikTok (Asia)"
+    },
+    {
+      "package": "com.YouTube.iT",
+      "title": "YouTube Lite"
+    },
+    {
+      "package": "com.my.youtube",
+      "title": "Youtube"
+    },
+    {
+      "package": "com.google.android.apps.youtube.mango",
+      "title": "YouTube Go"
+    },
+    {
+      "package": "com.apkpure.aegon",
+      "title": "APKPure"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.apkpure.arya",
+      "title": "APKPure Lite"
+    },
+    {
+      "package": "com.hexputilities.youtubelite",
+      "title": "YouTube Lite"
+    },
+    {
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
+    },
+    {
+      "package": "app.revanced.android.youtube",
+      "title": "YouTube ReVanced"
+    },
+    {
+      "package": "com.google.android.apps.youtube.creator",
+      "title": "YouTube Studio"
+    },
+    {
+      "package": "youtube.lite.anikinc",
+      "title": "YouTube Lite"
+    },
+    {
+      "package": "com.youtubepremium.youtubepremiumpro",
+      "title": "Youtube Premium"
+    },
+    {
+      "package": "com.google.android.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.vanced.android.youtube",
+      "title": "YouTube Vanced"
+    },
+    {
+      "package": "com.youtube.vanced",
+      "title": "youtube vanced"
+    },
+    {
+      "package": "com.apkpure.discovery",
+      "title": "APKPure Discovery"
+    },
+    {
+      "package": "com.google.android.youtube.tvmusic",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "app.revanced.android.apps.youtube.music",
+      "title": "ReVanced YouTube Music"
+    },
+    {
+      "package": "com.google.android.apps.youtube.vr",
+      "title": "YouTube VR"
+    }
+  ],
+  "versions": [
+    {
+      "version": "21.38.124",
+      "uploaded": "2026-09-22"
+    },
+    {
+      "version": "21.13.164",
+      "uploaded": "2026-04-03"
+    },
+    {
+      "version": "21.37.47",
+      "uploaded": "2026-09-22"
+    },
+    {
+      "version": "21.37.42",
+      "uploaded": "2026-09-15"
+    },
+    {
+      "version": "21.37.42-SECONDARY",
+      "uploaded": "2026-09-13"
+    },
+    {
+      "version": "21.36.47",
+      "uploaded": "2026-09-12"
+    },
+    {
+      "version": "21.36.45",
+      "uploaded": "2026-09-06"
+    },
+    {
+      "version": "21.36.45-SECONDARY",
+      "uploaded": "2026-09-06"
+    },
+    {
+      "version": "21.35.447",
+      "uploaded": "2026-09-05"
+    },
+    {
+      "version": "21.35.442",
+      "uploaded": "2026-08-29"
+    },
+    {
+      "version": "21.34.247",
+      "uploaded": "2026-08-28"
+    },
+    {
+      "version": "21.34.245",
+      "uploaded": "2026-08-29"
+    },
+    {
+      "version": "21.34.244",
+      "uploaded": "2026-08-29"
+    },
+    {
+      "version": "21.34.243",
+      "uploaded": "2026-08-23"
+    },
+    {
+      "version": "21.34.243-SECONDARY",
+      "uploaded": "2026-08-22"
+    },
+    {
+      "version": "21.33.326",
+      "uploaded": "2026-08-21"
+    },
+    {
+      "version": "21.33.324",
+      "uploaded": "2026-08-20"
+    },
+    {
+      "version": "21.33.322",
+      "uploaded": "2026-08-19"
+    },
+    {
+      "version": "21.33.322-SECONDARY",
+      "uploaded": "2026-08-15"
+    },
+    {
+      "version": "21.32.9",
+      "uploaded": "2026-08-22"
+    },
+    {
+      "version": "21.32.5",
+      "uploaded": "2026-08-15"
+    },
+    {
+      "version": "21.32.4",
+      "uploaded": "2026-08-11"
+    },
+    {
+      "version": "21.32.3",
+      "uploaded": "2026-08-07"
+    },
+    {
+      "version": "21.31.529",
+      "uploaded": "2026-08-12"
+    },
+    {
+      "version": "21.31.527",
+      "uploaded": "2026-08-08"
+    },
+    {
+      "version": "21.31.525",
+      "uploaded": "2026-08-04"
+    },
+    {
+      "version": "21.31.524",
+      "uploaded": "2026-08-01"
+    },
+    {
+      "version": "21.30.216",
+      "uploaded": "2026-08-04"
+    },
+    {
+      "version": "21.30.215",
+      "uploaded": "2026-08-04"
+    },
+    {
+      "version": "21.30.211",
+      "uploaded": "2026-08-01"
+    },
+    {
+      "version": "21.30.210",
+      "uploaded": "2026-08-01"
+    },
+    {
+      "version": "21.30.209",
+      "uploaded": "2026-07-29"
+    },
+    {
+      "version": "21.30.206-SECONDARY",
+      "uploaded": "2026-07-26"
+    },
+    {
+      "version": "21.29.369",
+      "uploaded": "2026-07-29"
+    },
+    {
+      "version": "21.29.368",
+      "uploaded": "2026-07-25"
+    },
+    {
+      "version": "21.29.367",
+      "uploaded": "2026-07-25"
+    },
+    {
+      "version": "21.29.366",
+      "uploaded": "2026-07-21"
+    },
+    {
+      "version": "21.29.363",
+      "uploaded": "2026-07-19"
+    },
+    {
+      "version": "21.28.206",
+      "uploaded": "2026-07-18"
+    },
+    {
+      "version": "21.28.205",
+      "uploaded": "2026-07-18"
+    },
+    {
+      "version": "21.28.204",
+      "uploaded": "2026-07-12"
+    },
+    {
+      "version": "21.28.204-SECONDARY",
+      "uploaded": "2026-07-12"
+    },
+    {
+      "version": "21.26.366",
+      "uploaded": "2026-07-11"
+    },
+    {
+      "version": "21.26.365",
+      "uploaded": "2026-07-11"
+    },
+    {
+      "version": "21.26.364",
+      "uploaded": "2026-06-27"
+    },
+    {
+      "version": "21.26.364-SECONDARY",
+      "uploaded": "2026-06-28"
+    },
+    {
+      "version": "21.25.530",
+      "uploaded": "2026-06-26"
+    },
+    {
+      "version": "21.25.528",
+      "uploaded": "2026-06-25"
+    },
+    {
+      "version": "21.25.523",
+      "uploaded": "2026-06-23"
+    },
+    {
+      "version": "21.24.366",
+      "uploaded": "2026-06-17"
+    },
+    {
+      "version": "21.24.363",
+      "uploaded": "2026-06-12"
+    },
+    {
+      "version": "21.23.492",
+      "uploaded": "2026-06-12"
+    },
+    {
+      "version": "21.23.486",
+      "uploaded": "2026-06-10"
+    },
+    {
+      "version": "21.23.483",
+      "uploaded": "2026-06-05"
+    },
+    {
+      "version": "21.21.91",
+      "uploaded": "2026-05-29"
+    },
+    {
+      "version": "21.21.88",
+      "uploaded": "2026-05-30"
+    },
+    {
+      "version": "21.21.87",
+      "uploaded": "2026-05-28"
+    },
+    {
+      "version": "21.21.83",
+      "uploaded": "2026-05-23"
+    },
+    {
+      "version": "21.20.403",
+      "uploaded": "2026-05-22"
+    },
+    {
+      "version": "21.20.402",
+      "uploaded": "2026-05-15"
+    },
+    {
+      "version": "21.19.286",
+      "uploaded": "2026-05-09"
+    },
+    {
+      "version": "21.18.169",
+      "uploaded": "2026-05-07"
+    },
+    {
+      "version": "21.18.163",
+      "uploaded": "2026-05-02"
+    },
+    {
+      "version": "21.17.482",
+      "uploaded": "2026-05-02"
+    },
+    {
+      "version": "21.17.481",
+      "uploaded": "2026-04-26"
+    },
+    {
+      "version": "21.16.245",
+      "uploaded": "2026-04-22"
+    },
+    {
+      "version": "21.16.242",
+      "uploaded": "2026-04-18"
+    },
+    {
+      "version": "21.15.291",
+      "uploaded": "2026-04-18"
+    },
+    {
+      "version": "21.14.484",
+      "uploaded": "2026-04-03"
+    },
+    {
+      "version": "21.13.163",
+      "uploaded": "2026-03-27"
+    },
+    {
+      "version": "21.12.524",
+      "uploaded": "2026-03-22"
+    },
+    {
+      "version": "21.11.486",
+      "uploaded": "2026-03-20"
+    },
+    {
+      "version": "21.11.483",
+      "uploaded": "2026-03-14"
+    },
+    {
+      "version": "21.10.493",
+      "uploaded": "2026-03-07"
+    },
+    {
+      "version": "21.09.270",
+      "uploaded": "2026-03-06"
+    },
+    {
+      "version": "21.09.266",
+      "uploaded": "2026-02-28"
+    },
+    {
+      "version": "21.09.260",
+      "uploaded": "2026-02-27"
+    },
+    {
+      "version": "21.08.270",
+      "uploaded": "2026-02-27"
+    },
+    {
+      "version": "21.08.265",
+      "uploaded": "2026-02-21"
+    },
+    {
+      "version": "21.08.261",
+      "uploaded": "2026-02-19"
+    },
+    {
+      "version": "21.06.261",
+      "uploaded": "2026-02-19"
+    },
+    {
+      "version": "21.06.251",
+      "uploaded": "2026-02-06"
+    },
+    {
+      "version": "21.05.264",
+      "uploaded": "2026-02-05"
+    },
+    {
+      "version": "21.04.223",
+      "uploaded": "2026-01-31"
+    },
+    {
+      "version": "21.04.222",
+      "uploaded": "2026-01-28"
+    },
+    {
+      "version": "21.03.36",
+      "uploaded": "2026-01-21"
+    },
+    {
+      "version": "21.02.35",
+      "uploaded": "2026-01-14"
+    },
+    {
+      "version": "21.02.33",
+      "uploaded": "2026-01-12"
+    },
+    {
+      "version": "21.02.32",
+      "uploaded": "2026-01-08"
+    },
+    {
+      "version": "20.51.39",
+      "uploaded": "2025-12-19"
+    },
+    {
+      "version": "20.51.38",
+      "uploaded": "2025-12-19"
+    },
+    {
+      "version": "20.51.34",
+      "uploaded": "2025-12-17"
+    },
+    {
+      "version": "20.50.40",
+      "uploaded": "2025-12-17"
+    },
+    {
+      "version": "20.47.49",
+      "uploaded": "2025-12-11"
+    },
+    {
+      "version": "20.47.48",
+      "uploaded": "2025-12-06"
+    },
+    {
+      "version": "20.47.42",
+      "uploaded": "2025-11-26"
+    },
+    {
+      "version": "20.47.38",
+      "uploaded": "2025-11-22"
+    },
+    {
+      "version": "20.47.34",
+      "uploaded": "2025-11-22"
+    },
+    {
+      "version": "20.45.39",
+      "uploaded": "2025-11-14"
+    },
+    {
+      "version": "20.45.36",
+      "uploaded": "2025-11-13"
+    },
+    {
+      "version": "20.45.34",
+      "uploaded": "2025-11-08"
+    },
+    {
+      "version": "20.43.43",
+      "uploaded": "2025-11-01"
+    },
+    {
+      "version": "20.42.45",
+      "uploaded": "2025-10-24"
+    },
+    {
+      "version": "20.42.38",
+      "uploaded": "2025-10-18"
+    },
+    {
+      "version": "20.41.40",
+      "uploaded": "2025-10-16"
+    },
+    {
+      "version": "20.41.38",
+      "uploaded": "2025-10-15"
+    },
+    {
+      "version": "20.41.34",
+      "uploaded": "2025-10-10"
+    },
+    {
+      "version": "20.41.33",
+      "uploaded": "2025-10-10"
+    },
+    {
+      "version": "20.40.41",
+      "uploaded": "2025-10-08"
+    },
+    {
+      "version": "20.39.41",
+      "uploaded": "2025-10-03"
+    },
+    {
+      "version": "20.38.42",
+      "uploaded": "2025-09-30"
+    },
+    {
+      "version": "20.38.37",
+      "uploaded": "2025-09-24"
+    },
+    {
+      "version": "20.38.32",
+      "uploaded": "2025-09-20"
+    },
+    {
+      "version": "20.37.45",
+      "uploaded": "2025-09-17"
+    },
+    {
+      "version": "20.34.37",
+      "uploaded": "2025-08-29"
+    },
+    {
+      "version": "20.34.35",
+      "uploaded": "2025-08-23"
+    },
+    {
+      "version": "20.32.36",
+      "uploaded": "2025-08-10"
+    },
+    {
+      "version": "20.31.39",
+      "uploaded": "2025-08-07"
+    },
+    {
+      "version": "20.30.35",
+      "uploaded": "2025-07-26"
+    },
+    {
+      "version": "20.26.46",
+      "uploaded": "2025-07-12"
+    },
+    {
+      "version": "20.26.45",
+      "uploaded": "2025-07-11"
+    },
+    {
+      "version": "20.26.43",
+      "uploaded": "2025-07-11"
+    },
+    {
+      "version": "20.26.40",
+      "uploaded": "2025-07-09"
+    },
+    {
+      "version": "20.26.35",
+      "uploaded": "2025-06-28"
+    },
+    {
+      "version": "20.25.37",
+      "uploaded": "2025-06-28"
+    },
+    {
+      "version": "20.25.35",
+      "uploaded": "2025-06-25"
+    },
+    {
+      "version": "20.25.33",
+      "uploaded": "2025-06-20"
+    },
+    {
+      "version": "20.24.39",
+      "uploaded": "2025-06-19"
+    },
+    {
+      "version": "20.24.34",
+      "uploaded": "2025-06-14"
+    },
+    {
+      "version": "20.21.37",
+      "uploaded": "2025-05-31"
+    },
+    {
+      "version": "20.20.41",
+      "uploaded": "2025-05-22"
+    },
+    {
+      "version": "20.20.39",
+      "uploaded": "2025-05-21"
+    },
+    {
+      "version": "20.20.36",
+      "uploaded": "2025-05-18"
+    },
+    {
+      "version": "20.18.36",
+      "uploaded": "2025-05-10"
+    },
+    {
+      "version": "20.18.34",
+      "uploaded": "2025-05-07"
+    },
+    {
+      "version": "20.17.39",
+      "uploaded": "2025-04-30"
+    },
+    {
+      "version": "20.15.38",
+      "uploaded": "2025-04-16"
+    },
+    {
+      "version": "20.15.36",
+      "uploaded": "2025-04-12"
+    },
+    {
+      "version": "20.14.43",
+      "uploaded": "2025-04-12"
+    },
+    {
+      "version": "20.14.41",
+      "uploaded": "2025-04-11"
+    },
+    {
+      "version": "20.14.39",
+      "uploaded": "2025-04-10"
+    },
+    {
+      "version": "20.14.33",
+      "uploaded": "2025-04-03"
+    },
+    {
+      "version": "20.13.41",
+      "uploaded": "2025-04-10"
+    },
+    {
+      "version": "20.12.46",
+      "uploaded": "2025-06-27"
+    },
+    {
+      "version": "20.12.41",
+      "uploaded": "2025-03-29"
+    },
+    {
+      "version": "20.11.41",
+      "uploaded": "2025-04-27"
+    },
+    {
+      "version": "20.09.39",
+      "uploaded": "2025-04-22"
+    },
+    {
+      "version": "20.07.39",
+      "uploaded": "2025-05-13"
+    },
+    {
+      "version": "19.47.53",
+      "uploaded": "2025-05-13"
+    },
+    {
+      "version": "19.16.39",
+      "uploaded": "2025-06-19"
+    },
+    {
+      "version": "19.09.37",
+      "uploaded": "2025-06-19"
+    }
+  ],
+  "target": {
+    "url": "https://d.apkpure.com/b/APK/com.google.android.youtube?version=latest",
+    "version": "21.38.124",
+    "arch": "universal",
+    "provider": "apkpure",
+    "headers": []
+  }
+}

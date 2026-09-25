@@ -185,7 +185,7 @@ pub struct VersionInfo {
 }
 
 /// A concrete, downloadable APK: URL plus any headers the host requires.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct DownloadTarget {
 	pub url: String,
 	pub version: String,

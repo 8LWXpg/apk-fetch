@@ -1,0 +1,121 @@
+{
+  "hits": [
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.google.android.youtube.tvmusic",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music.pwa",
+      "title": "YouTube Music for Chromebook"
+    },
+    {
+      "package": "com.pandora.android",
+      "title": "Pandora"
+    },
+    {
+      "package": "com.google.android.youtube",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.soundcloud.android",
+      "title": "SoundCloud"
+    },
+    {
+      "package": "com.spotify.tv.android",
+      "title": "Spotify"
+    },
+    {
+      "package": "com.audiomack",
+      "title": "Audiomack"
+    },
+    {
+      "package": "com.google.android.apps.youtube.unplugged",
+      "title": "YouTube TV: Live TV & more"
+    },
+    {
+      "package": "com.amazon.mp3",
+      "title": "Amazon Music"
+    },
+    {
+      "package": "com.clearchannel.iheartradio.controller",
+      "title": "iHeart"
+    },
+    {
+      "package": "deezer.android.app",
+      "title": "Deezer"
+    },
+    {
+      "package": "com.piyush.music",
+      "title": "Oto Music"
+    },
+    {
+      "package": "com.aspiro.tidal",
+      "title": "TIDAL"
+    },
+    {
+      "package": "com.qobuz.music",
+      "title": "Qobuz"
+    },
+    {
+      "package": "com.dywx.larkplayer",
+      "title": "Lark Player"
+    },
+    {
+      "package": "in.krosbits.musicolet",
+      "title": "Musicolet"
+    },
+    {
+      "package": "com.shazam.android",
+      "title": "Shazam"
+    },
+    {
+      "package": "com.sec.android.app.music",
+      "title": "Samsung Music"
+    },
+    {
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
+    },
+    {
+      "package": "tunein.player",
+      "title": "TuneIn Radio"
+    },
+    {
+      "package": "com.apple.android.music",
+      "title": "Apple Music"
+    },
+    {
+      "package": "com.spotify.music",
+      "title": "Spotify"
+    },
+    {
+      "package": "com.android.chrome",
+      "title": "Chrome"
+    }
+  ],
+  "versions": [
+    {
+      "version": "9.38.51",
+      "uploaded": "2026-09-23"
+    },
+    {
+      "version": "9.38.42",
+      "uploaded": "2026-09-23"
+    },
+    {
+      "version": "9.38.21",
+      "uploaded": "2026-09-23"
+    }
+  ],
+  "target": {
+    "url": "https://apkcombo.com/r2?u=https%3A%2F%2Fapks.39b7cb94d40914bac590886981b0ed6e.r2.cloudflarestorage.com%2Fcom.google.android.apps.youtube.music%2F9.38.51%2F93851240.d1d823a60d274d29dda45610a58e00001efc922e.apk%3Fresponse-content-disposition%3Dattachment%253B%2520filename%253D%2522YouTube%2520Music_9.38.51_apkcombo.com.apk%2522%26response-content-type%3Dapplication%252Fvnd.android.package-archive%26X-Amz-Algorithm%3DAWS4-HMAC-SHA256%26X-Amz-Date%3D20260923T063645Z%26X-Amz-SignedHeaders%3Dhost%26X-Amz-Expires%3D14400%26X-Amz-Credential%3D3cb727b4cd4780c410b780ac7caa4da3%252F20260923%252Fauto%252Fs3%252Faws4_request%26X-Amz-Signature%3Db2322ea01ccde5c88f701a0045b60538bdf4c80a490cfd43d47d3068ebbc34b2&fp=b6b19daeb7d92e4c64832fe114b4ecf0&ip=1.162.34.132&package_name=com.google.android.apps.youtube.music&lang=en",
+    "version": "9.38.51",
+    "arch": "arm64-v8a",
+    "provider": "apkcombo",
+    "headers": []
+  }
+}

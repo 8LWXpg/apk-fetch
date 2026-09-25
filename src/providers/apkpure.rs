@@ -116,45 +116,31 @@ mod refresh {
 }
 
 /// Replays the whole resolution flow offline against the recorded fixtures,
-/// asserting on the assembled `DownloadTarget` rather than per-parser output.
+/// diffing search/versions/download_url output against the `record.json` one.
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::providers::fixtures::{APPS, assert_absolute, root};
+	use crate::providers::fixtures::{APPS, assert_absolute, assert_record, root, run_flow};
 
 	#[test]
 	fn resolves_from_fixtures() {
 		for (app, pkg) in APPS {
+			let dir = root("apkpure").join(app);
 			let p = ApkPure {
-				fetcher: HttpFetcher::playback(root("apkpure").join(app), fixture_name),
+				fetcher: HttpFetcher::playback(dir.clone(), fixture_name),
 			};
 
-			let hits = p.search(app).unwrap_or_else(|e| panic!("{app}: search: {e}"));
-			assert!(!hits.is_empty(), "{app}: empty search");
-			for h in &hits {
-				assert!(h.package.contains('.'), "{app}: {}", h.package);
-				assert!(!h.title.trim().is_empty(), "{app}: blank title");
-			}
+			let record = run_flow(&p, app, pkg);
+			assert_record(&dir, &record, app);
 
-			let vers = p.versions(pkg).unwrap_or_else(|e| panic!("{app}: versions: {e}"));
-			assert!(!vers.is_empty(), "{app}: no versions");
+			assert_absolute(&record.target.url, app);
 			assert!(
-				vers.iter().all(|v| v.version.contains('.') && !v.version.contains('(')),
-				"{app}: malformed version"
-			);
-
-			let t = p
-				.download_url(pkg, None, Arch::ARM64_V8A)
-				.unwrap_or_else(|e| panic!("{app}: download_url: {e}"));
-			assert_absolute(&t.url, app);
-			assert!(
-				t.url.starts_with("https://d.apkpure.com/b/APK/") && t.url.contains(pkg),
+				record.target.url.starts_with("https://d.apkpure.com/b/APK/") && record.target.url.contains(pkg),
 				"{app}: {}",
-				t.url
+				record.target.url
 			);
-			assert!(t.version.contains('.'), "{app}: {}", t.version);
-			assert_eq!(t.arch, Arch::all());
-			assert!(t.headers.is_empty(), "{app}: unexpected headers");
+			assert!(record.target.arch == Arch::all());
+			assert!(record.target.headers.is_empty(), "{app}: unexpected headers");
 		}
 	}
 }

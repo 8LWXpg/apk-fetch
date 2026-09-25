@@ -296,8 +296,8 @@ impl HttpFetcher {
 			if let Some((dir, name)) = &self.record
 				&& let Some(name) = name(url)
 			{
-				fs::create_dir_all(dir).expect("fixture dir");
-				fs::write(dir.join(format!("{name}.html")), trim_html(body)).expect("write fixture");
+				fs::create_dir_all(dir).unwrap();
+				fs::write(dir.join(format!("{name}.html")), trim_html(body)).unwrap();
 			}
 			return Ok(body.to_string());
 		}
@@ -341,8 +341,8 @@ impl HttpFetcher {
 		if let Some((dir, name)) = &self.record
 			&& let Some(name) = name(url)
 		{
-			fs::create_dir_all(dir).expect("fixture dir");
-			fs::write(dir.join(format!("{name}.html")), &effective).expect("write fixture");
+			fs::create_dir_all(dir).unwrap();
+			fs::write(dir.join(format!("{name}.html")), &effective).unwrap();
 		}
 
 		Ok(effective)

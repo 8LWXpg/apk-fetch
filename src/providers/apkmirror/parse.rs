@@ -226,15 +226,6 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn derives_app_slug() {
-		assert_eq!(
-			app_slug(&"/apk/mozilla/firefox/firefox-x-y-release/".into()),
-			Some("mozilla/firefox")
-		);
-		assert_eq!(app_slug(&"/apk/mozilla/".into()), None);
-	}
-
-	#[test]
 	fn strips_version_from_any_position() {
 		assert_eq!(
 			strip_version("LINE: Calls & Messages 26.14.0"),

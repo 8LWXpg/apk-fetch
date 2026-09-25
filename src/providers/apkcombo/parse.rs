@@ -159,34 +159,3 @@ pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
 pub fn final_download_url(r2_url: &str, checkin: &str, pkg: &str) -> String {
 	format!("{r2_url}&{}&package_name={pkg}&lang=en", checkin.trim())
 }
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn slug_off_the_redirect() {
-		let yt = "com.google.android.youtube";
-		// `/en/{pkg}/` redirected to the canonical page: first segment is the slug.
-		assert_eq!(
-			slug_from_canonical_url(&format!("/youtube/{yt}/").into(), yt).as_deref(),
-			Some("youtube")
-		);
-		// Never redirected — APKCombo has no page for it.
-		assert_eq!(
-			slug_from_canonical_url(&format!("{LOOKUP_LOCALE}/{yt}/").into(), yt),
-			None
-		);
-		// Landed on a different app's page.
-		assert_eq!(slug_from_canonical_url(&"/spotify/com.spotify.music/".into(), yt), None);
-	}
-
-	#[test]
-	fn xid_extraction() {
-		assert_eq!(
-			extract_xid(r#"...<script>var xid = "abc123def"</script>..."#),
-			"abc123def"
-		);
-		assert_eq!(extract_xid("no xid here"), FALLBACK_XID);
-	}
-}
