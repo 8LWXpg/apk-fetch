@@ -32,9 +32,14 @@ impl ApkMirror {
 		self.base_search("searchtype=app", q)
 	}
 
-	/// Best-ranked hit: for a package id, the phone app's newest release.
+	/// The phone app's newest release for a package id. Re-ranked by
+	/// [`parse::rank_by_id`] because the name rank can't carry a package id:
+	/// `com`/`google`/`android` are words in no app title, so a spin-off naming
+	/// them ("YouTube Music (Android Automotive)") wins and its upload-date-shaped
+	/// versions come back instead.
 	fn top_app_hit(&self, pkg: &str) -> Result<parse::SearchHit, ProviderError> {
-		let hits = self.app_search(pkg)?;
+		let mut hits = self.base_search("searchtype=app", pkg)?;
+		hits.sort_by_key(|h| parse::rank_by_id(h, pkg));
 		parse::latest_version(&self.fetcher.get_text(hits[0].release_url.as_str())?)
 	}
 }

@@ -63,27 +63,42 @@ fn token_match(q: &str, t: &str) -> u8 {
 	}
 }
 
-/// Custom ranking because APKMirror search algorithm is a simple substring
-/// check with alphabetic ordering.
-///
-/// Two terms, in priority order:
+/// For each query token, its best [`token_match`] against `subject`, summed.
+fn coverage(q: &str, subject: &str) -> u8 {
+	let subject = subject.to_lowercase();
+	tokens(q)
+		.map(|qt| tokens(&subject).map(|tt| token_match(qt, tt)).min().unwrap_or(3))
+		.sum()
+}
+
+/// Repo-slug tokens no query token equals. The phone app is the bare slug and
+/// each spin-off appends to it, so `youtube` < `youtube-beta` < `youtube-wear-os`.
+fn extra_slug_tokens(hit: &SearchHit, q: &str) -> u8 {
+	let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
+	tokens(repo).filter(|st| !tokens(q).any(|qt| qt == *st)).count() as u8
+}
+
+/// Rank a **name** query's hits, because APKMirror's own search is a plain
+/// substring check with alphabetic ordering. Two terms, in priority order:
 ///
 /// - `coverage`: for each query token, its best [`token_match`] against the
 ///   version-stripped title, summed — so every word of `youtube music` counts
 ///   and an off-title hit sorts last.
-/// - `extra`: repo-slug tokens no query token equals. The phone app is the bare
-///   slug and each spin-off appends to it, so `youtube` < `youtube-beta` <
-///   `youtube-wear-os`; naming the channel (`youtube beta`) lifts its penalty.
-///   A package-id query ties on `coverage` and this term alone picks the app.
-fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
+/// - `extra`: the spin-off penalty. Naming the channel (`youtube beta`) lifts it.
+pub fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
 	let q = query.to_lowercase();
-	let title = strip_version(&hit.title).to_lowercase();
-	let coverage = tokens(&q)
-		.map(|qt| tokens(&title).map(|tt| token_match(qt, tt)).min().unwrap_or(3))
-		.sum();
+	(coverage(&q, &strip_version(&hit.title)), extra_slug_tokens(hit, &q))
+}
+
+/// Rank a **package id**'s hits. The slug is the only package-id signal the
+/// site exposes: `com`/`google`/`android` are words in no real app name, so a
+/// spin-off that names them ("YouTube Music (Android Automotive)") beats the
+/// phone app on [`rank`]'s `coverage` and takes its place. So here the leftover
+/// [`extra_slug_tokens`] lead, with coverage against the slug as the tiebreak.
+pub fn rank_by_id(hit: &SearchHit, query: &str) -> (u8, u8) {
+	let q = query.to_lowercase();
 	let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
-	let extra = tokens(repo).filter(|st| !tokens(&q).any(|qt| qt == *st)).count() as u8;
-	(coverage, extra)
+	(extra_slug_tokens(hit, &q), coverage(&q, repo))
 }
 
 /// `{BASE}/apk/{org}/{repo}/{repo}-x-y-release/` -> `{org}/{repo}`.
@@ -266,5 +281,35 @@ mod tests {
 		// token, not a substring, so `com.devhd.x` doesn't pick `-dev`
 		assert!(r("YouTube beta", "youtube-beta", "youtube beta") < r("YouTube", "youtube", "youtube beta"));
 		assert!(r("Feedly", "feedly", "com.devhd.feedly") < r("Feedly", "feedly-dev", "com.devhd.feedly"));
+	}
+
+	#[test]
+	fn package_id_takes_the_bare_slug_over_a_spin_off_naming_its_words() {
+		let pkg = "com.google.android.apps.youtube.music";
+		let r = |title: &str, repo: &str| rank_by_id(&hit(title, repo), pkg);
+		// `com`/`google`/`android`/`apps` are in no title, so [`rank`] hands these
+		// to the automotive and vanced builds — and their upload-date-shaped
+		// versions with them
+		assert!(
+			r("YouTube Music 1.0", "youtube-music")
+				< r(
+					"YouTube Music (Android Automotive) 1.0",
+					"youtube-music-android-automotive"
+				)
+		);
+		assert!(r("YouTube Music 1.0", "youtube-music") < r("Vanced YouTube Music 1.0", "vanced-youtube-music"));
+		assert!(r("YouTube Music 1.0", "youtube-music") < r("YouTube Music 1.0", "youtube-music-wear-os-11"));
+	}
+
+	/// The recorded `com.google.android.youtube` search page. Everything the
+	/// versions/download flow reads comes off the top hit, so it has to be the
+	/// phone app — not `YouTube for Google TV (Android TV)`, whose newest build
+	/// is versioned `2015.10.14`.
+	#[test]
+	fn recorded_package_search_takes_the_phone_app() {
+		const PKG: &str = "com.google.android.youtube";
+		let mut hits = parse_search(include_str!("tests/youtube/search-pkg.html"), PKG).unwrap();
+		hits.sort_by_key(|h| rank_by_id(h, PKG));
+		assert_eq!(app_slug(&hits[0].release_url), Some("google-inc/youtube"));
 	}
 }

@@ -65,6 +65,10 @@
       "title": "Youtube Premium"
     },
     {
+      "package": "devian.tubemate.home",
+      "title": "TubeMate YouTube Downloader"
+    },
+    {
       "package": "com.google.android.music",
       "title": "YouTube Music"
     },
@@ -81,26 +85,26 @@
       "title": "APKPure Discovery"
     },
     {
+      "package": "app.rvx.android.youtube",
+      "title": "YouTube ReVanced Extended"
+    },
+    {
       "package": "com.google.android.youtube.tvmusic",
       "title": "YouTube Music"
-    },
-    {
-      "package": "app.revanced.android.apps.youtube.music",
-      "title": "ReVanced YouTube Music"
-    },
-    {
-      "package": "com.google.android.apps.youtube.vr",
-      "title": "YouTube VR"
     }
   ],
   "versions": [
     {
-      "version": "21.38.124",
-      "uploaded": "2026-09-22"
+      "version": "21.38.130",
+      "uploaded": "2026-09-24"
     },
     {
       "version": "21.13.164",
       "uploaded": "2026-04-03"
+    },
+    {
+      "version": "21.38.124",
+      "uploaded": "2026-09-22"
     },
     {
       "version": "21.37.47",
@@ -423,10 +427,6 @@
       "uploaded": "2026-02-06"
     },
     {
-      "version": "21.05.264",
-      "uploaded": "2026-02-05"
-    },
-    {
       "version": "21.04.223",
       "uploaded": "2026-01-31"
     },
@@ -701,7 +701,7 @@
   ],
   "target": {
     "url": "https://d.apkpure.com/b/APK/com.google.android.youtube?version=latest",
-    "version": "21.38.124",
+    "version": "21.38.130",
     "arch": "universal",
     "provider": "apkpure",
     "headers": []

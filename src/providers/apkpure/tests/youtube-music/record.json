@@ -53,12 +53,12 @@
       "title": "APKPure Discovery"
     },
     {
-      "package": "app.revanced.android.apps.youtube.music",
-      "title": "ReVanced YouTube Music"
-    },
-    {
       "package": "com.my.youtube",
       "title": "Youtube"
+    },
+    {
+      "package": "app.revanced.android.apps.youtube.music",
+      "title": "ReVanced YouTube Music"
     },
     {
       "package": "com.google.android.apps.youtube.vr",
@@ -73,16 +73,16 @@
       "title": "Apk Pure Walkthrough"
     },
     {
-      "package": "akpinstaller.livetvstreming.apkpurefree06",
-      "title": "APK Pure Downloader &Installer"
-    },
-    {
       "package": "com.google.android.apps.youtube.gaming",
       "title": "YouTube Gaming"
     },
     {
       "package": "canh.com.musistream",
       "title": "Music Player: YouTube Stream"
+    },
+    {
+      "package": "akpinstaller.livetvstreming.apkpurefree06",
+      "title": "APK Pure Downloader &Installer"
     }
   ],
   "versions": [
@@ -233,10 +233,6 @@
     {
       "version": "9.14.53",
       "uploaded": "2026-04-10"
-    },
-    {
-      "version": "9.13.51",
-      "uploaded": "2026-04-08"
     },
     {
       "version": "9.04.50",

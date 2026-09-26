@@ -5,28 +5,28 @@
       "title": "YouTube"
     },
     {
-      "package": "com.google.android.apps.youtube.kids",
-      "title": "YouTube Kids"
-    },
-    {
       "package": "com.google.android.apps.automotive.youtube",
       "title": "YouTube"
     },
     {
-      "package": "com.google.android.youtube.tv",
-      "title": "YouTube TV"
-    },
-    {
-      "package": "com.google.android.apps.youtube.music",
-      "title": "YouTube Music"
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
     },
     {
       "package": "com.google.android.apps.youtube.unplugged",
       "title": "YouTube TV: Live TV & more"
     },
     {
+      "package": "com.google.android.youtube.tv",
+      "title": "YouTube TV"
+    },
+    {
       "package": "com.google.android.apps.youtube.creator",
       "title": "YouTube Studio"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
     },
     {
       "package": "com.google.android.apps.youtube.producer",
@@ -43,29 +43,25 @@
     {
       "package": "com.google.android.apps.youtube.music.pwa",
       "title": "YouTube Music for Chromebook"
-    },
-    {
-      "package": "com.google.android.videos",
-      "title": "Google TV"
     }
   ],
   "versions": [
     {
-      "version": "21.37.47",
-      "uploaded": "2026-09-22"
+      "version": "21.38.130",
+      "uploaded": "2026-09-26"
     },
     {
-      "version": "21.38.124",
-      "uploaded": "2026-09-22"
+      "version": "21.39.522",
+      "uploaded": "2026-09-26"
     },
     {
-      "version": "21.38.123",
-      "uploaded": "2026-09-19"
+      "version": "21.39.521",
+      "uploaded": "2026-09-26"
     }
   ],
   "target": {
-    "url": "https://apkcombo.com/r2?u=https%3A%2F%2Fapks.39b7cb94d40914bac590886981b0ed6e.r2.cloudflarestorage.com%2Fcom.google.android.youtube%2F21.37.47%2F1561296094.35b5ecf36b6b2eb9cfd52a76f89eec8b11bed4b9.apk%3Fresponse-content-disposition%3Dattachment%253B%2520filename%253D%2522YouTube_21.37.47_apkcombo.com.apk%2522%26response-content-type%3Dapplication%252Fvnd.android.package-archive%26X-Amz-Algorithm%3DAWS4-HMAC-SHA256%26X-Amz-Date%3D20260923T063637Z%26X-Amz-SignedHeaders%3Dhost%26X-Amz-Expires%3D14400%26X-Amz-Credential%3D3cb727b4cd4780c410b780ac7caa4da3%252F20260923%252Fauto%252Fs3%252Faws4_request%26X-Amz-Signature%3Df4c5ad09054c087dc78f9bedc91ac80b02e126c428c2b4bed8060701817ad2aa&fp=b6b19daeb7d92e4c64832fe114b4ecf0&ip=1.162.34.132&package_name=com.google.android.youtube&lang=en",
-    "version": "21.37.47",
+    "url": "https://apkcombo.com/r2?u=https%3A%2F%2Fapks.39b7cb94d40914bac590886981b0ed6e.r2.cloudflarestorage.com%2Fcom.google.android.youtube%2F21.38.130%2F1561297264.8dcf3d13df03041051efc3cb96b1d0e70174ba29.apk%3Fresponse-content-disposition%3Dattachment%253B%2520filename%253D%2522YouTube_21.38.130_apkcombo.com.apk%2522%26response-content-type%3Dapplication%252Fvnd.android.package-archive%26X-Amz-Algorithm%3DAWS4-HMAC-SHA256%26X-Amz-Date%3D20260926T161252Z%26X-Amz-SignedHeaders%3Dhost%26X-Amz-Expires%3D14400%26X-Amz-Credential%3D3cb727b4cd4780c410b780ac7caa4da3%252F20260926%252Fauto%252Fs3%252Faws4_request%26X-Amz-Signature%3D1bcc958873c2972a6a919ee431beb348c95f6c69bdb7bf809fd004f062e30a1c&fp=e53e58bea486b0a3e1c8f697a9f81709&ip=1.162.18.150&package_name=com.google.android.youtube&lang=en",
+    "version": "21.38.130",
     "arch": "universal",
     "provider": "apkcombo",
     "headers": []

@@ -11,6 +11,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use colored::Colorize;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -82,11 +83,24 @@ pub fn assert_record(dir: &Path, fixture: &FixtureRecord, app: &str) {
 }
 
 /// Recapture one provider's `tests/<app>/` — `*.html` pages *and* the `record.json`.
+///
+/// Run it with `--nocapture` and read the lines: a recording is made by the code
+/// under test, so a wrong answer is faithfully recorded and only visible to a
+/// human. `git diff` on `record.json` is the same check, after the fact.
 pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName, build: impl Fn(HttpFetcher) -> P) {
 	for (app, pkg) in APPS {
 		let dir = root(P::ID.as_str()).join(app);
 		let p = build(HttpFetcher::recording(dir.clone(), fixture_name));
 		let record = run_flow(&p, app, pkg);
 		fs::write(dir.join("record.json"), serde_json::to_string_pretty(&record).unwrap()).unwrap();
+		println!(
+			"{}: {pkg}\n  {} {}\n  {} {} {}\n",
+			app.cyan(),
+			"latest".bold(),
+			record.versions.first().map_or("-", |v| v.version.as_str()),
+			"target".bold(),
+			record.target.version,
+			record.target.url.dimmed()
+		);
 	}
 }
