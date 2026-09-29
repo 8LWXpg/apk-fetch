@@ -194,20 +194,29 @@ pub struct DownloadTarget {
 	pub headers: Vec<(String, String)>,
 }
 
-/// Failure modes a provider can hit.
+/// Failure modes a provider can hit. The provider name is added by
+/// [`ProviderFailure`], so the message must not repeat it.
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
 	/// The site won't serve this client right now.
 	#[error("blocked by anti-bot / rate limit (challenge page, 403, or 429)")]
 	Blocked,
-	/// The string says what was missing. The provider name is added by
-	/// [`ProviderFailure`], so the message must not repeat it.
+
+	/// The site itself answered 404 or 410. The string says what was missing.
 	#[error("{0}")]
 	NotFound(String),
+
+	/// No match: no search hit, no such version, no such variant.
+	#[error("no match: {0}")]
+	NoMatch(String),
+
+	/// Parser error that indicates the site might be changed.
 	#[error("parse error: {0}")]
 	ParseError(String),
+
 	#[error("network error: {0}")]
 	Network(#[from] std::io::Error),
+
 	/// Ctrl+C
 	#[error("cancelled")]
 	Cancelled,
@@ -225,6 +234,14 @@ impl ProviderError {
 	/// Attributes this failure to the provider that raised it.
 	pub fn by(self, provider: ProviderId) -> ProviderFailure {
 		ProviderFailure { provider, source: self }
+	}
+
+	pub fn parse_error(msg: impl std::fmt::Display, at: impl std::fmt::Display) -> Self {
+		Self::ParseError(format!("{msg}: {at}"))
+	}
+
+	pub fn no_match(msg: impl std::fmt::Display, at: impl std::fmt::Display) -> Self {
+		Self::NoMatch(format!("{msg}: {at}"))
 	}
 }
 

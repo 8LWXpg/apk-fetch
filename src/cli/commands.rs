@@ -1,13 +1,12 @@
-use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
-
-use crate::common::ui::{error, info, print_message, success, warning};
-use crate::common::{self, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry};
-
 use std::path::Path;
 
 use anyhow::anyhow;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
+
+use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
+use crate::common::ui::{error, info, print_message, success, warning};
+use crate::common::{self, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry};
 
 fn pad(s: &str, w: usize) -> String {
 	format!("{s}{}", " ".repeat(w.saturating_sub(s.width())))

@@ -9,12 +9,12 @@
       "title": "YouTube Music"
     },
     {
-      "package": "com.google.android.youtube",
-      "title": "YouTube"
-    },
-    {
       "package": "com.google.android.apps.youtube.music.pwa",
       "title": "YouTube Music for Chromebook"
+    },
+    {
+      "package": "com.google.android.youtube",
+      "title": "YouTube"
     },
     {
       "package": "com.spotify.music",
@@ -112,7 +112,7 @@
     }
   ],
   "target": {
-    "url": "https://apkcombo.com/r2?u=https%3A%2F%2Fapks.39b7cb94d40914bac590886981b0ed6e.r2.cloudflarestorage.com%2Fcom.google.android.apps.youtube.music%2F9.38.51%2F93851240.d1d823a60d274d29dda45610a58e00001efc922e.apk%3Fresponse-content-disposition%3Dattachment%253B%2520filename%253D%2522YouTube%2520Music_9.38.51_apkcombo.com.apk%2522%26response-content-type%3Dapplication%252Fvnd.android.package-archive%26X-Amz-Algorithm%3DAWS4-HMAC-SHA256%26X-Amz-Date%3D20260926T161259Z%26X-Amz-SignedHeaders%3Dhost%26X-Amz-Expires%3D14400%26X-Amz-Credential%3D3cb727b4cd4780c410b780ac7caa4da3%252F20260926%252Fauto%252Fs3%252Faws4_request%26X-Amz-Signature%3D7bdc404419cc2c5221cacafb03ce80be94bc6dccbf36e4638b8f14bbed6c89a6&fp=e53e58bea486b0a3e1c8f697a9f81709&ip=1.162.18.150&package_name=com.google.android.apps.youtube.music&lang=en",
+    "url": "https://apkcombo.com/r2?u=https%3A%2F%2Fapks.39b7cb94d40914bac590886981b0ed6e.r2.cloudflarestorage.com%2Fcom.google.android.apps.youtube.music%2F9.38.51%2F93851240.d1d823a60d274d29dda45610a58e00001efc922e.apk%3Fresponse-content-disposition%3Dattachment%253B%2520filename%253D%2522YouTube%2520Music_9.38.51_apkcombo.com.apk%2522%26response-content-type%3Dapplication%252Fvnd.android.package-archive%26X-Amz-Algorithm%3DAWS4-HMAC-SHA256%26X-Amz-Date%3D20260929T030746Z%26X-Amz-SignedHeaders%3Dhost%26X-Amz-Expires%3D14400%26X-Amz-Credential%3D3cb727b4cd4780c410b780ac7caa4da3%252F20260929%252Fauto%252Fs3%252Faws4_request%26X-Amz-Signature%3Dbaf6ec9ba66f9c93242088e6cdfe82f5bce78512ff12a27fef56fe7f6b975fe6&fp=e53e58bea486b0a3e1c8f697a9f81709&ip=1.162.18.150&package_name=com.google.android.apps.youtube.music&lang=en",
     "version": "9.38.51",
     "arch": "arm64-v8a",
     "provider": "apkcombo",

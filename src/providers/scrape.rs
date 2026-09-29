@@ -1,13 +1,16 @@
 //! Scraping helpers shared by the provider parsers.
 
-use crate::common::{
-	contract::{Arch, ProviderError},
-	ui::error,
-};
 use chrono::NaiveDate;
 use form_urlencoded::byte_serialize;
 use scraper::Selector;
 
+use crate::common::contract::Arch;
+use crate::common::ui::error;
+
+/// Parses a CSS selector.
+///
+/// Parsing is not free, so build each selector once (e.g. in a `LazyLock`
+/// static) and reuse it rather than calling this per row or per request.
 pub fn sel(s: &str) -> Selector {
 	Selector::parse(s).unwrap_or_else(|e| panic!("invalid CSS selector {s:?}: {e}"))
 }
@@ -18,10 +21,6 @@ pub fn text_of(el: scraper::ElementRef<'_>) -> String {
 		.split_whitespace()
 		.collect::<Vec<_>>()
 		.join(" ")
-}
-
-pub fn parse_err(msg: impl Into<String>) -> ProviderError {
-	ProviderError::ParseError(msg.into())
 }
 
 /// Encode the query with `form-urlencodes::byte_serialize`

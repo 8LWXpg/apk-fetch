@@ -1,7 +1,9 @@
-use crate::common::contract::ProviderError;
-use crate::providers::scrape::{parse_date, sel, text_of};
 use chrono::NaiveDate;
 use scraper::Html;
+use versions::Versioning;
+
+use crate::common::contract::ProviderError;
+use crate::providers::scrape::{parse_date, sel, text_of};
 
 pub type Url = crate::common::contract::Url<super::ApkPure>;
 
@@ -31,14 +33,13 @@ pub struct SearchHit {
 
 /// Parse `/search?q=...`. Covers both result shapes: the top "brand" match
 /// (`div.sa-apps-div`) and the `a.dd` list rows.
-pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
-	let doc = Html::parse_document(html);
+pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>, ProviderError> {
 	let anchor = sel("a[href*=\"apkpure.com/\"]");
 	let p1 = sel("p.p1");
 
 	let mut seen = std::collections::HashSet::new();
 	let mut hits = Vec::new();
-	for a in doc.select(&anchor) {
+	for a in html.select(&anchor) {
 		let Some(href) = a.value().attr("href") else {
 			continue;
 		};
@@ -55,7 +56,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 		hits.push(SearchHit { package, title });
 	}
 	if hits.is_empty() {
-		return Err(ProviderError::NotFound("search returned nothing".into()));
+		return Err(ProviderError::NoMatch("search returned nothing".into()));
 	}
 	Ok(hits)
 }
@@ -68,12 +69,11 @@ pub struct VersionRow {
 }
 
 /// Parse `/x/<pkg>/versions` — rows carry everything in `data-dt-*` attributes.
-pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
-	let doc = Html::parse_document(html);
+pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 	let row = sel("div.ver_download_link[data-dt-version][data-dt-versioncode]");
 	let date = sel("span.update-on");
 	let mut seen = std::collections::HashSet::new();
-	let rows: Vec<VersionRow> = doc
+	let mut rows: Vec<VersionRow> = html
 		.select(&row)
 		.filter_map(|el| {
 			let version = clean_version(el.value().attr("data-dt-version")?);
@@ -92,19 +92,19 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 		})
 		.collect();
 	if rows.is_empty() {
-		return Err(ProviderError::NotFound("no versions listed".into()));
+		return Err(ProviderError::NoMatch("no versions listed".into()));
 	}
+	rows.sort_by(|a, b| Versioning::new(&b.version).cmp(&Versioning::new(&a.version)));
 	Ok(rows)
 }
 
 /// The latest version string from an app page main download button, else first
 /// `data-dt-version`. `None` if the page has no such marker.
-pub fn latest_version(html: &str) -> Option<String> {
-	let doc = Html::parse_document(html);
+pub fn latest_version(html: &Html) -> Option<String> {
 	let main = sel(".dt-main-download-btn[data-dt-version]");
 	let any = sel("[data-dt-version]");
-	doc.select(&main)
-		.chain(doc.select(&any))
+	html.select(&main)
+		.chain(html.select(&any))
 		.find_map(|el| el.value().attr("data-dt-version"))
 		.map(clean_version)
 		.filter(|s| !s.is_empty())

@@ -1,13 +1,20 @@
+use std::sync::LazyLock;
+
+use scraper::{ElementRef, Html, Selector};
+use versions::Versioning;
+
 use crate::common::contract::{Arch, ProviderError, VersionInfo};
-use crate::providers::scrape::{Variant, parse_date, parse_err, sel, text_of, version_token};
-use scraper::Html;
+use crate::providers::scrape::{Variant, parse_date, sel, text_of, version_token};
 
 pub type Url = crate::common::contract::Url<super::ApkMirror>;
+
+static APP_ROW: LazyLock<Selector> = LazyLock::new(|| sel("div.appRow"));
 
 pub struct SearchHit {
 	/// `"{App name} {version}"`, e.g. `"YouTube 21.36.45"`.
 	pub title: String,
 	pub release_url: Url,
+	pub package_id: String,
 }
 
 impl SearchHit {
@@ -16,66 +23,57 @@ impl SearchHit {
 	}
 }
 
+fn parse_row(row: ElementRef) -> Result<SearchHit, ProviderError> {
+	let a = row
+		.select(&sel("a.fontBlack"))
+		.next()
+		.ok_or_else(|| ProviderError::parse_error("title link", row.html()))?;
+	let href = a
+		.attr("href")
+		.ok_or_else(|| ProviderError::parse_error("title href", a.html()))?;
+	let img = row
+		.select(&sel("img"))
+		.next()
+		.ok_or_else(|| ProviderError::parse_error("icon", row.html()))?;
+	Ok(SearchHit {
+		title: text_of(a),
+		release_url: href.into(),
+		package_id: package_id(img)?,
+	})
+}
+
 /// Parse the `/?post_type=app_release&s=...` results page for `query`, best
-/// match first (see [`rank`]); ties keep the site's newest-first order.
+/// match first (see [`rank`]); ties keep the site's order.
 ///
 /// # Returns
 /// Nonzero length `Vec`
-pub fn parse_search(html: &str, query: &str) -> Result<Vec<SearchHit>, ProviderError> {
-	if html.contains("No results found matching your query") {
-		return Err(ProviderError::NotFound("search returned nothing".into()));
+pub fn parse_search(html: &Html, query: &str) -> Result<Vec<SearchHit>, ProviderError> {
+	// Select search result div.
+	let results = html.select(&sel(".listWidget")).next().unwrap();
+	if let Some(e) = results.select(&sel(".addPadding p")).next()
+		&& text_of(e) == "No results found matching your query"
+	{
+		return Err(ProviderError::NoMatch("search returned nothing".into()));
 	}
-	// Strip "Popular / Latest Uploads" widgets in `<h5 class="widgetHeader">`.
-	let html = match html.find(r#"<h5 class="widgetHeader">"#) {
-		Some(cut) => &html[..cut],
-		None => html,
-	};
-	let doc = Html::parse_document(html);
-	let link = sel("h5.appRowTitle a.fontBlack");
-	let mut hits: Vec<SearchHit> = doc
-		.select(&link)
-		.map(|a| SearchHit {
-			title: text_of(a),
-			release_url: a.attr("href").unwrap().into(),
-		})
-		.collect();
-	if hits.is_empty() {
-		return Err(ProviderError::NotFound("search returned nothing".into()));
-	}
-	hits.sort_by_key(|h| rank(h, query));
+	let mut hits = results.select(&APP_ROW).map(parse_row).collect::<Result<Vec<_>, _>>()?; // first bad row aborts with its ParseError
+	hits.sort_by_cached_key(|h| rank(h, query));
 	Ok(hits)
 }
 
-fn tokens(s: &str) -> impl Iterator<Item = &str> {
-	s.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty())
-}
-
-/// How well one query token is matched by one title token; 0 = exact.
-fn token_match(q: &str, t: &str) -> u8 {
-	if t == q {
-		0
-	} else if t.starts_with(q) {
-		1
-	} else if t.contains(q) {
-		2
-	} else {
-		3
-	}
-}
-
-/// For each query token, its best [`token_match`] against `subject`, summed.
-fn coverage(q: &str, subject: &str) -> u8 {
-	let subject = subject.to_lowercase();
-	tokens(q)
-		.map(|qt| tokens(&subject).map(|tt| token_match(qt, tt)).min().unwrap_or(3))
-		.sum()
-}
-
-/// Repo-slug tokens no query token equals. The phone app is the bare slug and
-/// each spin-off appends to it, so `youtube` < `youtube-beta` < `youtube-wear-os`.
-fn extra_slug_tokens(hit: &SearchHit, q: &str) -> u8 {
-	let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
-	tokens(repo).filter(|st| !tokens(q).any(|qt| qt == *st)).count() as u8
+/// Get Package ID from `<img>`. Package ID is somehow used in app icon URL.
+fn package_id(img: ElementRef) -> Result<String, ProviderError> {
+	let src = img
+		.attr("src")
+		.ok_or_else(|| ProviderError::parse_error("no src", img.html()))?;
+	// `wp-content/themes/APKMirror/ap_resize/ap_resize.php?src=https%3A%2F%2Fdownloadr2.apkmirror.com%2Fwp-content%2Fuploads%2F2024%2F10%2F21%2F67189d60d72a1_com.google.android.youtube.png&w=32&h=32&q=100`
+	let start = src
+		.rfind('_')
+		.ok_or_else(|| ProviderError::parse_error("malformed img src", src))?
+		+ 1;
+	let stop = src
+		.rfind(".png")
+		.ok_or_else(|| ProviderError::parse_error("malformed img src", src))?;
+	Ok(src[start..stop].into())
 }
 
 /// Rank a **name** query's hits, because APKMirror's own search is a plain
@@ -86,19 +84,40 @@ fn extra_slug_tokens(hit: &SearchHit, q: &str) -> u8 {
 ///   and an off-title hit sorts last.
 /// - `extra`: the spin-off penalty. Naming the channel (`youtube beta`) lifts it.
 pub fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
+	fn tokens(s: &str) -> impl Iterator<Item = &str> {
+		s.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty())
+	}
+
+	/// How well one query token is matched by one title token; 0 = exact.
+	fn token_match(q: &str, t: &str) -> u8 {
+		if t == q {
+			0
+		} else if t.starts_with(q) {
+			1
+		} else if t.contains(q) {
+			2
+		} else {
+			3
+		}
+	}
+
+	/// For each query token, its best [`token_match`] against `subject`, summed.
+	fn coverage(q: &str, subject: &str) -> u8 {
+		let subject = subject.to_lowercase();
+		tokens(q)
+			.map(|qt| tokens(&subject).map(|tt| token_match(qt, tt)).min().unwrap_or(3))
+			.sum()
+	}
+
+	/// Repo-slug tokens no query token equals. The phone app is the bare slug and
+	/// each spin-off appends to it, so `youtube` < `youtube-beta` < `youtube-wear-os`.
+	fn extra_slug_tokens(hit: &SearchHit, q: &str) -> u8 {
+		let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
+		tokens(repo).filter(|st| !tokens(q).any(|qt| qt == *st)).count() as u8
+	}
+
 	let q = query.to_lowercase();
 	(coverage(&q, &strip_version(&hit.title)), extra_slug_tokens(hit, &q))
-}
-
-/// Rank a **package id**'s hits. The slug is the only package-id signal the
-/// site exposes: `com`/`google`/`android` are words in no real app name, so a
-/// spin-off that names them ("YouTube Music (Android Automotive)") beats the
-/// phone app on [`rank`]'s `coverage` and takes its place. So here the leftover
-/// [`extra_slug_tokens`] lead, with coverage against the slug as the tiebreak.
-pub fn rank_by_id(hit: &SearchHit, query: &str) -> (u8, u8) {
-	let q = query.to_lowercase();
-	let repo = app_slug(&hit.release_url).map_or_default(|s| s.rsplit('/').next().unwrap_or(s));
-	(extra_slug_tokens(hit, &q), coverage(&q, repo))
 }
 
 /// `{BASE}/apk/{org}/{repo}/{repo}-x-y-release/` -> `{org}/{repo}`.
@@ -111,42 +130,27 @@ pub fn app_slug(release_url: &Url) -> Option<&str> {
 }
 
 /// Get latest version from "All versions" widget on app page.
-pub fn latest_version(html: &str) -> Result<SearchHit, ProviderError> {
-	let doc = Html::parse_document(html);
-	let widget_sel = sel("div.listWidget.p-relative");
-	let title_sel = sel("h5.appRowTitle a.fontBlack");
-
-	let widget = doc
-		.select(&widget_sel)
+pub fn latest_version(html: &Html) -> Result<SearchHit, ProviderError> {
+	let widget = html
+		.select(&sel("div.listWidget.p-relative"))
 		.next()
-		.ok_or_else(|| parse_err("no 'All versions' widget on app page"))?;
+		.ok_or_else(|| ProviderError::ParseError("no 'All versions' widget on app page".into()))?;
 
-	let a = widget
-		.select(&title_sel)
-		.next()
-		.ok_or_else(|| parse_err("no item in 'All versions' widget"))?;
-
-	Ok(SearchHit {
-		title: text_of(a),
-		release_url: a.attr("href").unwrap().into(),
-	})
+	let hits = widget.select(&APP_ROW).map(parse_row).collect::<Result<Vec<_>, _>>()?;
+	Ok(hits.into_iter().max_by_key(|h| Versioning::new(h.version())).unwrap())
 }
 
 /// Parse the "All versions" widget on app page.
-pub fn parse_versions(html: &str) -> Result<Vec<VersionInfo>, ProviderError> {
-	let doc = Html::parse_document(html);
-	let widget_sel = sel("div.listWidget.p-relative");
-	let row_sel = sel("div.appRow");
+pub fn parse_versions(html: &Html) -> Result<Vec<VersionInfo>, ProviderError> {
+	let widget = html
+		.select(&sel("div.listWidget.p-relative"))
+		.next()
+		.ok_or_else(|| ProviderError::ParseError("no 'All versions' widget on app page".into()))?;
 	let title_sel = sel("h5.appRowTitle a.fontBlack");
 	let date_sel = sel("span.dateyear_utc");
 
-	let widget = doc
-		.select(&widget_sel)
-		.next()
-		.ok_or_else(|| parse_err("no 'All versions' widget on app page"))?;
-
-	let rows: Vec<VersionInfo> = widget
-		.select(&row_sel)
+	let mut rows: Vec<VersionInfo> = widget
+		.select(&APP_ROW)
 		.filter_map(|row| {
 			let a = row.select(&title_sel).next()?;
 			a.attr("href")?; // Skip rows whose title isn't a real link
@@ -162,8 +166,9 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionInfo>, ProviderError> {
 		})
 		.collect();
 	if rows.is_empty() {
-		return Err(ProviderError::NotFound("no versions listed".into()));
+		return Err(ProviderError::NoMatch("no versions listed".into()));
 	}
+	rows.sort_by(|a, b| Versioning::new(&b.version).cmp(&Versioning::new(&a.version)));
 	Ok(rows)
 }
 
@@ -184,14 +189,13 @@ pub fn strip_version(title: &str) -> String {
 }
 
 /// Parse the `.variants-table` on a version page. Empty `Vec` if the table is absent.
-pub fn parse_variants(html: &str) -> Vec<Variant> {
-	let doc = Html::parse_document(html);
+pub fn parse_variants(html: &Html) -> Vec<Variant> {
 	let row_sel = sel("div.variants-table div.table-row");
 	let cell_sel = sel("div.table-cell");
 	let link_sel = sel("a.accent_color");
 	let badge_sel = sel("span.apkm-badge");
 
-	doc.select(&row_sel)
+	html.select(&row_sel)
 		.skip(1) // header row
 		.filter_map(|row| {
 			let cells: Vec<_> = row.select(&cell_sel).collect();
@@ -218,22 +222,20 @@ pub fn parse_variants(html: &str) -> Vec<Variant> {
 }
 
 /// Download page -> the keyed `a.downloadButton` href (absolute).
-pub fn parse_download_button(html: &str) -> Result<Url, ProviderError> {
-	let doc = Html::parse_document(html);
-	doc.select(&sel("a.downloadButton"))
+pub fn parse_download_button(html: &Html) -> Result<Url, ProviderError> {
+	html.select(&sel("a.downloadButton"))
 		.find_map(|a| a.attr("href"))
 		.map(Into::into)
-		.ok_or_else(|| parse_err("no download button on download page"))
+		.ok_or_else(|| ProviderError::ParseError("no download button on download page".into()))
 }
 
-/// "Your download is starting..." page -> the actual APK URL (absolute).
-pub fn parse_final_link(html: &str) -> Result<Url, ProviderError> {
-	let doc = Html::parse_document(html);
-	doc.select(&sel("a#download-link"))
-		.chain(doc.select(&sel("div.card-with-tabs a[href]")))
+/// "Your download is starting..." page -> the actual AAPK URL (absolute).
+pub fn parse_final_link(html: &Html) -> Result<Url, ProviderError> {
+	html.select(&sel("a#download-link"))
+		.chain(html.select(&sel("div.card-with-tabs a[href]")))
 		.find_map(|a| a.attr("href"))
 		.map(Into::into)
-		.ok_or_else(|| parse_err("no final download link on 'starting' page"))
+		.ok_or_else(|| ProviderError::ParseError("no final download link on 'starting' page".into()))
 }
 
 #[cfg(test)]
@@ -257,6 +259,7 @@ mod tests {
 		SearchHit {
 			title: title.into(),
 			release_url: format!("/apk/org/{repo}/{repo}-1-release/").into(),
+			package_id: String::new(),
 		}
 	}
 
@@ -281,35 +284,5 @@ mod tests {
 		// token, not a substring, so `com.devhd.x` doesn't pick `-dev`
 		assert!(r("YouTube beta", "youtube-beta", "youtube beta") < r("YouTube", "youtube", "youtube beta"));
 		assert!(r("Feedly", "feedly", "com.devhd.feedly") < r("Feedly", "feedly-dev", "com.devhd.feedly"));
-	}
-
-	#[test]
-	fn package_id_takes_the_bare_slug_over_a_spin_off_naming_its_words() {
-		let pkg = "com.google.android.apps.youtube.music";
-		let r = |title: &str, repo: &str| rank_by_id(&hit(title, repo), pkg);
-		// `com`/`google`/`android`/`apps` are in no title, so [`rank`] hands these
-		// to the automotive and vanced builds — and their upload-date-shaped
-		// versions with them
-		assert!(
-			r("YouTube Music 1.0", "youtube-music")
-				< r(
-					"YouTube Music (Android Automotive) 1.0",
-					"youtube-music-android-automotive"
-				)
-		);
-		assert!(r("YouTube Music 1.0", "youtube-music") < r("Vanced YouTube Music 1.0", "vanced-youtube-music"));
-		assert!(r("YouTube Music 1.0", "youtube-music") < r("YouTube Music 1.0", "youtube-music-wear-os-11"));
-	}
-
-	/// The recorded `com.google.android.youtube` search page. Everything the
-	/// versions/download flow reads comes off the top hit, so it has to be the
-	/// phone app — not `YouTube for Google TV (Android TV)`, whose newest build
-	/// is versioned `2015.10.14`.
-	#[test]
-	fn recorded_package_search_takes_the_phone_app() {
-		const PKG: &str = "com.google.android.youtube";
-		let mut hits = parse_search(include_str!("tests/youtube/search-pkg.html"), PKG).unwrap();
-		hits.sort_by_key(|h| rank_by_id(h, PKG));
-		assert_eq!(app_slug(&hits[0].release_url), Some("google-inc/youtube"));
 	}
 }

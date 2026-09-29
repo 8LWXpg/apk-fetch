@@ -3,9 +3,9 @@
 //!
 //! `arch` is accepted but not honored: APKPure's web endpoint serves one build
 //! per app regardless of ABI so the resolved `arch` is always `Universal`.
-
 mod parse;
 use parse::Url;
+use scraper::Html;
 
 use crate::common::contract::{
 	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
@@ -20,10 +20,11 @@ pub struct ApkPure {
 
 impl ApkPure {
 	fn version_rows(&self, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
-		let html = self
-			.fetcher
-			.get_text(Url::from(format!("/x/{pkg}/versions")).as_str())?;
-		parse::parse_versions(&html)
+		parse::parse_versions(&Html::parse_document(
+			&self
+				.fetcher
+				.get_text(Url::from(format!("/x/{pkg}/versions")).as_str())?,
+		))
 	}
 }
 
@@ -38,16 +39,17 @@ impl Provider for ApkPure {
 	}
 
 	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
-		let html = self
-			.fetcher
-			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?;
-		Ok(parse::parse_search(&html)?
-			.into_iter()
-			.map(|h| AppResult {
-				package: h.package,
-				title: h.title,
-			})
-			.collect())
+		Ok(parse::parse_search(&Html::parse_document(
+			&self
+				.fetcher
+				.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?,
+		))?
+		.into_iter()
+		.map(|h| AppResult {
+			package: h.package,
+			title: h.title,
+		})
+		.collect())
 	}
 
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
@@ -69,13 +71,13 @@ impl Provider for ApkPure {
 					.version_rows(pkg)?
 					.into_iter()
 					.find(|r| version_matches(&r.version, want))
-					.ok_or_else(|| ProviderError::NotFound(format!("no version {want} for {pkg}")))?;
+					.ok_or_else(|| ProviderError::NoMatch(format!("no version {want} for {pkg}")))?;
 				(Some(r.code), r.version)
 			}
 			None => {
 				let html = self.fetcher.get_text(Url::from(format!("/x/{pkg}")).as_str())?;
-				let label = parse::latest_version(&html)
-					.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))?;
+				let label = parse::latest_version(&Html::parse_document(&html))
+					.ok_or_else(|| ProviderError::NoMatch(format!("no app page for {pkg}")))?;
 				(None, label)
 			}
 		};
@@ -120,7 +122,7 @@ mod refresh {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::providers::fixtures::{APPS, assert_absolute, assert_record, root, run_flow};
+	use crate::providers::fixtures::{APPS, assert_invariants, assert_record, root, run_flow};
 
 	#[test]
 	fn resolves_from_fixtures() {
@@ -132,8 +134,8 @@ mod tests {
 
 			let record = run_flow(&p, app, pkg);
 			assert_record(&dir, &record, app);
+			assert_invariants(&record, pkg, app);
 
-			assert_absolute(&record.target.url, app);
 			assert!(
 				record.target.url.starts_with("https://d.apkpure.com/b/APK/") && record.target.url.contains(pkg),
 				"{app}: {}",

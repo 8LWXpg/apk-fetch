@@ -1,8 +1,9 @@
-use crate::common::contract::{Arch, ProviderError};
-use crate::providers::scrape::{Variant, parse_date, parse_err, sel, text_of, version_token};
-
 use chrono::NaiveDate;
 use scraper::Html;
+use versions::Versioning;
+
+use crate::common::contract::{Arch, ProviderError};
+use crate::providers::scrape::{Variant, parse_date, sel, text_of, version_token};
 
 pub type Url = crate::common::contract::Url<super::ApkCombo>;
 
@@ -29,11 +30,10 @@ pub fn slug_from_canonical_url(url: &Url, pkg: &str) -> Option<String> {
 	}
 }
 
-pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
-	let doc = Html::parse_document(html);
+pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>, ProviderError> {
 	let link = sel("a.l_item");
 	let mut seen = std::collections::HashSet::new();
-	let hits: Vec<SearchHit> = doc
+	let hits: Vec<SearchHit> = html
 		.select(&link)
 		.filter_map(|a| {
 			let href = a.value().attr("href")?;
@@ -53,7 +53,7 @@ pub fn parse_search(html: &str) -> Result<Vec<SearchHit>, ProviderError> {
 		})
 		.collect();
 	if hits.is_empty() {
-		return Err(ProviderError::NotFound("search returned nothing".into()));
+		return Err(ProviderError::NoMatch("search returned nothing".into()));
 	}
 	Ok(hits)
 }
@@ -65,12 +65,12 @@ pub struct VersionRow {
 	pub download_page_url: Url,
 }
 
-pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
-	let doc = Html::parse_document(html);
+/// Sorted by version.
+pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 	let row = sel("ul.list-versions li a.ver-item");
 	let vername = sel(".vername");
 	let desc = sel(".description");
-	let rows: Vec<VersionRow> = doc
+	let mut rows: Vec<VersionRow> = html
 		.select(&row)
 		.filter_map(|a| {
 			let href = a.value().attr("href")?;
@@ -91,8 +91,9 @@ pub fn parse_versions(html: &str) -> Result<Vec<VersionRow>, ProviderError> {
 		})
 		.collect();
 	if rows.is_empty() {
-		return Err(ProviderError::NotFound("no versions listed".into()));
+		return Err(ProviderError::NoMatch("no versions listed".into()));
 	}
+	rows.sort_by(|a, b| Versioning::new(&b.version).cmp(&Versioning::new(&a.version)));
 	Ok(rows)
 }
 
@@ -107,8 +108,8 @@ pub fn extract_xid(html: &str) -> String {
 }
 
 /// [`Variant::url`] is the `/r2?u=<encoded signed URL>` link (absolute).
-pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
-	let doc = Html::parse_fragment(fragment);
+/// The caller parses the fragment with [`Html::parse_fragment`].
+pub fn parse_variants(html: &Html) -> Result<Vec<Variant>, ProviderError> {
 	// The recommended pick lives in `#best-variant-tab`; the rest in
 	// `#variants-tab`. Both are `.content-tab` with the same row shape.
 	let group = sel(".content-tab .tree > ul > li");
@@ -119,7 +120,7 @@ pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
 
 	let mut variants = Vec::new();
 	let mut seen = std::collections::HashSet::new();
-	for g in doc.select(&group) {
+	for g in html.select(&group) {
 		// One ABI, a comma list for a split bundle, or none (= runs anywhere).
 		let arch = g
 			.select(&arch_sel)
@@ -134,11 +135,11 @@ pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
 				continue;
 			}
 			variants.push(Variant {
-				version: a
-					.select(&vername)
-					.next()
-					.map(|v| version_token(&text_of(v)))
-					.unwrap_or_default(),
+				version: version_token(&text_of(
+					a.select(&vername)
+						.next()
+						.ok_or_else(|| ProviderError::parse_error("no version found", a.html()))?,
+				)),
 				// `.vtype` is "APK" or "XAPK".
 				bundle: a
 					.select(&vtype)
@@ -150,7 +151,7 @@ pub fn parse_variants(fragment: &str) -> Result<Vec<Variant>, ProviderError> {
 		}
 	}
 	if variants.is_empty() {
-		return Err(parse_err("no variants in download fragment"));
+		return Err(ProviderError::ParseError("no variants in download fragment".into()));
 	}
 	Ok(variants)
 }

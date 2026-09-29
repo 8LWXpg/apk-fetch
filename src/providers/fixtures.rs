@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use colored::Colorize;
 use serde::Serialize;
 use serde_json::Value;
+use versions::Versioning;
 
 use crate::common::contract::{AppResult, Arch, DownloadTarget, Provider, ProviderConst, VersionInfo};
 use crate::common::fetch::{FixtureName, HttpFetcher};
@@ -84,23 +85,116 @@ pub fn assert_record(dir: &Path, fixture: &FixtureRecord, app: &str) {
 
 /// Recapture one provider's `tests/<app>/` — `*.html` pages *and* the `record.json`.
 ///
-/// Run it with `--nocapture` and read the lines: a recording is made by the code
-/// under test, so a wrong answer is faithfully recorded and only visible to a
-/// human. `git diff` on `record.json` is the same check, after the fact.
+/// Run it with `--nocapture` and read the printed diffs.
 pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName, build: impl Fn(HttpFetcher) -> P) {
 	for (app, pkg) in APPS {
 		let dir = root(P::ID.as_str()).join(app);
+		let record_path = dir.join("record.json");
+		let previous: Value = fs::read_to_string(&record_path)
+			.ok()
+			.and_then(|s| serde_json::from_str(&s).ok())
+			.unwrap_or(Value::Null);
+
 		let p = build(HttpFetcher::recording(dir.clone(), fixture_name));
 		let record = run_flow(&p, app, pkg);
-		fs::write(dir.join("record.json"), serde_json::to_string_pretty(&record).unwrap()).unwrap();
-		println!(
-			"{}: {pkg}\n  {} {}\n  {} {} {}\n",
-			app.cyan(),
-			"latest".bold(),
-			record.versions.first().map_or("-", |v| v.version.as_str()),
-			"target".bold(),
-			record.target.version,
-			record.target.url.dimmed()
-		);
+		let new = serde_json::to_value(&record).unwrap();
+		fs::write(&record_path, serde_json::to_string_pretty(&new).unwrap()).unwrap();
+
+		print_diff(app, pkg, &previous, &new);
 	}
+}
+
+/// `old`/`new` at a JSON pointer, `"-"` if either side is missing/not a string.
+fn str_at<'a>(v: &'a Value, pointer: &str) -> &'a str {
+	v.pointer(pointer).and_then(Value::as_str).unwrap_or("-")
+}
+
+fn hit_count(v: &Value) -> usize {
+	v.pointer("/hits").and_then(Value::as_array).map_or(0, Vec::len)
+}
+
+fn line(label: &str, old: &str, new: &str) -> String {
+	if old == new {
+		format!("  {}: {new}", label.bold())
+	} else {
+		format!("  {}:\n  - {}\n  + {}", label.bold(), old.dimmed(), new.yellow())
+	}
+}
+
+/// Display form of a download URL for the refresh diff.
+fn url_shape(url: &str) -> String {
+	let inner = url.split_once('?').and_then(|(_, q)| {
+		form_urlencoded::parse(q.as_bytes())
+			.find(|(k, _)| k == "u")
+			.map(|(_, v)| v.into_owned())
+	});
+	let url = inner.unwrap_or_else(|| url.to_string());
+	let Some((base, query)) = url.split_once('?') else {
+		return url.clone();
+	};
+
+	let volatile = |k: &str| {
+		k.starts_with("X-Amz-")
+			|| k.starts_with("response-")
+			|| ["key", "fp", "ip", "lang", "package_name"].contains(&k)
+	};
+	let kept: Vec<String> = form_urlencoded::parse(query.as_bytes())
+		.filter(|(k, _)| !volatile(k))
+		.map(|(k, v)| format!("{k}={v}"))
+		.collect();
+	if kept.is_empty() {
+		base.to_string()
+	} else {
+		format!("{base}?{}", kept.join("&"))
+	}
+}
+
+fn print_diff(app: &str, pkg: &str, old: &Value, new: &Value) {
+	let (old_hits, new_hits) = (hit_count(old), hit_count(new));
+	println!(
+		"{}: {pkg}\n{}\n{}\n{}\n{}\n{}\n",
+		app.cyan(),
+		line("top hit", str_at(old, "/hits/0/title"), str_at(new, "/hits/0/title")),
+		line("hit count", &old_hits.to_string(), &new_hits.to_string()),
+		line(
+			"latest",
+			str_at(old, "/versions/0/version"),
+			str_at(new, "/versions/0/version")
+		),
+		line(
+			"target version",
+			str_at(old, "/target/version"),
+			str_at(new, "/target/version")
+		),
+		line(
+			"target url",
+			&url_shape(str_at(old, "/target/url")),
+			&url_shape(str_at(new, "/target/url"))
+		),
+	);
+}
+
+/// Cheap structural checks.
+pub fn assert_invariants(fixture: &FixtureRecord, _pkg: &str, app: &str) {
+	assert!(!fixture.versions.is_empty(), "{app}: no versions returned");
+	assert!(
+		fixture
+			.versions
+			.windows(2)
+			.all(|w| Versioning::new(&w[0].version) >= Versioning::new(&w[1].version)),
+		"{app}: versions not sorted newest-first (by version)"
+	);
+	let mut seen = std::collections::HashSet::new();
+	assert!(
+		fixture.versions.iter().all(|v| seen.insert(&v.version)),
+		"{app}: duplicate version in list"
+	);
+
+	assert_eq!(
+		fixture.target.version,
+		fixture.versions.first().unwrap().version,
+		"{app}: download target isn't the latest version in the versions list"
+	);
+
+	assert_absolute(&fixture.target.url, app);
 }

@@ -27,7 +27,7 @@ impl From<serde_json::Error> for AppError {
 /// Exit code for one provider's failure.
 pub fn provider_error_code(e: &ProviderError) -> u8 {
 	match e {
-		ProviderError::NotFound(_) => EXIT_NOT_FOUND,
+		ProviderError::NotFound(_) | ProviderError::NoMatch(_) => EXIT_NOT_FOUND,
 		ProviderError::Blocked => EXIT_BLOCKED,
 		ProviderError::Network(_) => EXIT_NETWORK,
 		ProviderError::Cancelled => EXIT_CANCELLED,
@@ -58,5 +58,21 @@ impl From<ResolveError> for AppError {
 			code,
 			source: anyhow::anyhow!("{e}"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{EXIT_NOT_FOUND, ProviderError, provider_error_code};
+
+	#[test]
+	fn http_404_and_no_match_share_the_not_found_exit() {
+		let http = ProviderError::NotFound("got 404 for https://x/y".into());
+		let no_match = ProviderError::NoMatch("search returned nothing".into());
+		assert_eq!(provider_error_code(&http), EXIT_NOT_FOUND);
+		assert_eq!(provider_error_code(&no_match), EXIT_NOT_FOUND);
+		// Only NotFound is a bare pass-through; NoMatch must name its class.
+		assert_eq!(http.to_string(), "got 404 for https://x/y");
+		assert_eq!(no_match.to_string(), "no match: search returned nothing");
 	}
 }

@@ -6,11 +6,9 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::{
-	cli::{Cli, dispatch},
-	common::fetch::install_ctrlc,
-	common::ui::error,
-};
+use crate::cli::{Cli, dispatch};
+use crate::common::fetch::install_ctrlc;
+use crate::common::ui::error;
 
 fn main() -> ExitCode {
 	install_ctrlc();

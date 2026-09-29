@@ -1,9 +1,10 @@
 //! APKCombo download flow:
 //!   search -> old-versions page -> download page -> POST variant frag -> POST `/checkin`
 //!   -> final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en` -> 302 -> CDN
-
 mod parse;
-use parse::Url;
+use parse::{Url, VersionRow};
+
+use scraper::Html;
 
 use crate::common::contract::{
 	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
@@ -24,14 +25,15 @@ impl ApkCombo {
 			.resolve_url(parse::app_url(parse::LOOKUP_LOCALE, pkg, "").as_str())?
 			.into();
 		parse::slug_from_canonical_url(&final_url, pkg)
-			.ok_or_else(|| ProviderError::NotFound(format!("no app page for {pkg}")))
+			.ok_or_else(|| ProviderError::no_match(format!("no app page for {pkg}"), &final_url))
 	}
 
-	fn version_rows(&self, slug: &str, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
-		let html = self
-			.fetcher
-			.get_text(parse::app_url(slug, pkg, "old-versions").as_str())?;
-		parse::parse_versions(&html)
+	fn version_rows(&self, slug: &str, pkg: &str) -> Result<Vec<VersionRow>, ProviderError> {
+		parse::parse_versions(&Html::parse_document(
+			&self
+				.fetcher
+				.get_text(parse::app_url(slug, pkg, "old-versions").as_str())?,
+		))
 	}
 }
 
@@ -46,16 +48,17 @@ impl Provider for ApkCombo {
 	}
 
 	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
-		let html = self
-			.fetcher
-			.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?;
-		Ok(parse::parse_search(&html)?
-			.into_iter()
-			.map(|h| AppResult {
-				package: h.package,
-				title: h.title,
-			})
-			.collect())
+		Ok(parse::parse_search(&Html::parse_document(
+			&self
+				.fetcher
+				.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?,
+		))?
+		.into_iter()
+		.map(|h| AppResult {
+			package: h.package,
+			title: h.title,
+		})
+		.collect())
 	}
 
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
@@ -74,36 +77,36 @@ impl Provider for ApkCombo {
 		let slug = self.slug_for(pkg)?;
 
 		// Locate the download page (carries the `xid` build tag).
-		let dl_page = match version {
-			None => parse::app_url(&slug, pkg, "download/phone-latest-apk"),
+		let row = match version {
+			None => self
+				.version_rows(&slug, pkg)?
+				.into_iter()
+				.next() // `version_rows` is sorted, so first one is latest.
+				.ok_or_else(|| ProviderError::NoMatch(format!("no versions for {pkg}")))?,
 			Some(want) => self
 				.version_rows(&slug, pkg)?
 				.into_iter()
 				.find(|r| version_matches(&r.version, want))
-				.map(|r| r.download_page_url)
-				.ok_or_else(|| ProviderError::NotFound(format!("no build {want} for {pkg}")))?,
+				.ok_or_else(|| ProviderError::NoMatch(format!("no build {want} for {pkg}")))?,
 		};
+		let (dl_page, dl_version) = (row.download_page_url, row.version);
 		let xid = parse::extract_xid(&self.fetcher.get_text(dl_page.as_str())?);
 
 		// POST the variant fragment.
 		let frag = self.fetcher.post_form(
 			parse::app_url(&slug, pkg, &format!("{xid}/dl")).as_str(),
-			&[("package_name", pkg), ("version", version.unwrap_or(""))],
+			&[("package_name", pkg), ("version", &dl_version)],
 		)?;
-		let variants = parse::parse_variants(&frag)?;
+		let variants = parse::parse_variants(&Html::parse_fragment(&frag))?;
 		let variant = choose_variant(&variants, arch)
-			.ok_or_else(|| ProviderError::NotFound(format!("no downloadable variant for {pkg}")))?;
+			.ok_or_else(|| ProviderError::no_match(format!("no downloadable variant for {pkg}"), arch))?;
 
 		// Checkin token.
 		let checkin = self.fetcher.post_form(Url::from("/checkin").as_str(), &[])?;
 
 		Ok(DownloadTarget {
 			url: parse::final_download_url(&variant.url, &checkin, pkg),
-			version: if variant.version.is_empty() {
-				version.unwrap_or("latest").to_string()
-			} else {
-				variant.version.clone()
-			},
+			version: variant.version.clone(),
 			arch: variant.arch,
 			provider: Self::ID,
 			headers: Vec::new(),
@@ -149,7 +152,7 @@ mod refresh {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::providers::fixtures::{APPS, assert_absolute, assert_record, root, run_flow};
+	use crate::providers::fixtures::{APPS, assert_invariants, assert_record, root, run_flow};
 
 	#[test]
 	fn resolves_from_fixtures() {
@@ -161,8 +164,8 @@ mod tests {
 
 			let record = run_flow(&p, app, pkg);
 			assert_record(&dir, &record, app);
+			assert_invariants(&record, pkg, app);
 
-			assert_absolute(&record.target.url, app);
 			assert!(
 				record.target.url.contains(pkg) && record.target.url.contains("package_name="),
 				"{app}: {}",

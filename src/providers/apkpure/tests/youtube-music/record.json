@@ -33,20 +33,20 @@
       "title": "YouTube"
     },
     {
-      "package": "com.YouTube.iT",
-      "title": "YouTube Lite"
-    },
-    {
       "package": "com.apkpure.arya",
       "title": "APKPure Lite"
     },
     {
-      "package": "youtube.lite.anikinc",
+      "package": "com.hexputilities.youtubelite",
       "title": "YouTube Lite"
     },
     {
-      "package": "com.vanced.android.youtube",
-      "title": "YouTube Vanced"
+      "package": "app.revanced.android.youtube",
+      "title": "YouTube ReVanced"
+    },
+    {
+      "package": "com.google.android.apps.youtube.mango",
+      "title": "YouTube Go"
     },
     {
       "package": "com.apkpure.discovery",
@@ -61,20 +61,20 @@
       "title": "ReVanced YouTube Music"
     },
     {
-      "package": "com.google.android.apps.youtube.vr",
-      "title": "YouTube VR"
+      "package": "com.tubemedia.app",
+      "title": "YouTube Playlist"
     },
     {
-      "package": "com.soiadmahedi.google.android.webyoutube",
-      "title": "YouTube Web"
+      "package": "app.morphe.android.youtube",
+      "title": "YouTube Morphe"
+    },
+    {
+      "package": "com.javidllc.videodown",
+      "title": "Youtube Downloader"
     },
     {
       "package": "com.browninginfo.tipsapkpure",
       "title": "Apk Pure Walkthrough"
-    },
-    {
-      "package": "com.google.android.apps.youtube.gaming",
-      "title": "YouTube Gaming"
     },
     {
       "package": "canh.com.musistream",
@@ -89,10 +89,6 @@
     {
       "version": "9.38.51",
       "uploaded": "2026-09-20"
-    },
-    {
-      "version": "8.40.54",
-      "uploaded": "2025-10-14"
     },
     {
       "version": "9.37.55",
@@ -237,6 +233,10 @@
     {
       "version": "9.04.50",
       "uploaded": "2026-01-26"
+    },
+    {
+      "version": "8.40.54",
+      "uploaded": "2025-10-14"
     },
     {
       "version": "8.37.55",
