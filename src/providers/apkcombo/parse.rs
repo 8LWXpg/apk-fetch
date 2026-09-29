@@ -1,5 +1,7 @@
+use std::sync::LazyLock;
+
 use chrono::NaiveDate;
-use scraper::Html;
+use scraper::{Html, Selector};
 use versions::Versioning;
 
 use crate::common::contract::{Arch, ProviderError};
@@ -10,6 +12,9 @@ pub type Url = crate::common::contract::Url<super::ApkCombo>;
 /// Fallback build tag if the download page's `var xid = "..."` can't be scraped.
 pub const FALLBACK_XID: &str = "01a1200x20240308";
 pub const LOOKUP_LOCALE: &str = "en";
+
+// Shared by `parse_versions` and `parse_variants`.
+static VERNAME: LazyLock<Selector> = LazyLock::new(|| sel(".vername"));
 
 /// `{BASE}/{slug}/{pkg}/{tail}`.
 pub fn app_url(slug: &str, pkg: &str, tail: &str) -> Url {
@@ -68,14 +73,13 @@ pub struct VersionRow {
 /// Sorted by version.
 pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 	let row = sel("ul.list-versions li a.ver-item");
-	let vername = sel(".vername");
 	let desc = sel(".description");
 	let mut rows: Vec<VersionRow> = html
 		.select(&row)
 		.filter_map(|a| {
 			let href = a.value().attr("href")?;
 			let version = a
-				.select(&vername)
+				.select(&VERNAME)
 				.next()
 				.map(|v| version_token(&text_of(v)))
 				.unwrap_or_default();
@@ -115,7 +119,6 @@ pub fn parse_variants(html: &Html) -> Result<Vec<Variant>, ProviderError> {
 	let group = sel(".content-tab .tree > ul > li");
 	let arch_sel = sel("span.blur code, code.blur, span.blur");
 	let item = sel("ul.file-list li a.variant");
-	let vername = sel(".vername");
 	let vtype = sel(".vtype");
 
 	let mut variants = Vec::new();
@@ -136,7 +139,7 @@ pub fn parse_variants(html: &Html) -> Result<Vec<Variant>, ProviderError> {
 			}
 			variants.push(Variant {
 				version: version_token(&text_of(
-					a.select(&vername)
+					a.select(&VERNAME)
 						.next()
 						.ok_or_else(|| ProviderError::parse_error("no version found", a.html()))?,
 				)),

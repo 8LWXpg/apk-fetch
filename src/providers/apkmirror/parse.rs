@@ -8,7 +8,12 @@ use crate::providers::scrape::{Variant, parse_date, sel, text_of, version_token}
 
 pub type Url = crate::common::contract::Url<super::ApkMirror>;
 
+// Shared by `latest_version` and `parse_versions`.
+static VERSIONS_WIDGET: LazyLock<Selector> = LazyLock::new(|| sel("div.listWidget.p-relative"));
 static APP_ROW: LazyLock<Selector> = LazyLock::new(|| sel("div.appRow"));
+// `parse_row` runs once per `APP_ROW`, so these are per-row, not per-page.
+static TITLE_LINK: LazyLock<Selector> = LazyLock::new(|| sel("a.fontBlack"));
+static ROW_ICON: LazyLock<Selector> = LazyLock::new(|| sel("img"));
 
 pub struct SearchHit {
 	/// `"{App name} {version}"`, e.g. `"YouTube 21.36.45"`.
@@ -25,14 +30,14 @@ impl SearchHit {
 
 fn parse_row(row: ElementRef) -> Result<SearchHit, ProviderError> {
 	let a = row
-		.select(&sel("a.fontBlack"))
+		.select(&TITLE_LINK)
 		.next()
 		.ok_or_else(|| ProviderError::parse_error("title link", row.html()))?;
 	let href = a
 		.attr("href")
 		.ok_or_else(|| ProviderError::parse_error("title href", a.html()))?;
 	let img = row
-		.select(&sel("img"))
+		.select(&ROW_ICON)
 		.next()
 		.ok_or_else(|| ProviderError::parse_error("icon", row.html()))?;
 	Ok(SearchHit {
@@ -132,7 +137,7 @@ pub fn app_slug(release_url: &Url) -> Option<&str> {
 /// Get latest version from "All versions" widget on app page.
 pub fn latest_version(html: &Html) -> Result<SearchHit, ProviderError> {
 	let widget = html
-		.select(&sel("div.listWidget.p-relative"))
+		.select(&VERSIONS_WIDGET)
 		.next()
 		.ok_or_else(|| ProviderError::ParseError("no 'All versions' widget on app page".into()))?;
 
@@ -143,7 +148,7 @@ pub fn latest_version(html: &Html) -> Result<SearchHit, ProviderError> {
 /// Parse the "All versions" widget on app page.
 pub fn parse_versions(html: &Html) -> Result<Vec<VersionInfo>, ProviderError> {
 	let widget = html
-		.select(&sel("div.listWidget.p-relative"))
+		.select(&VERSIONS_WIDGET)
 		.next()
 		.ok_or_else(|| ProviderError::ParseError("no 'All versions' widget on app page".into()))?;
 	let title_sel = sel("h5.appRowTitle a.fontBlack");
