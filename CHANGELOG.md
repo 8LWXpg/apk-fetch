@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Disable stdout print when `--json` is passed.
+
 ## 1.0.1
 
 - Improved APKMirror package search.
