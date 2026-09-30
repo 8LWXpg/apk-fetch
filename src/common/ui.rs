@@ -1,8 +1,25 @@
-/// Always uses a format string — a lone `$msg:expr` arm would print `"{f}"` literally.
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Whether `--json` was passed.
+static JSON: AtomicBool = AtomicBool::new(false);
+
+pub fn set_json(on: bool) {
+	JSON.store(on, Ordering::Relaxed);
+}
+
+/// True under `--json`.
+#[inline]
+pub fn json() -> bool {
+	JSON.load(Ordering::Relaxed)
+}
+
+/// `println!` with custom color and symbol, does nothing if [`json`] is `true`.
 macro_rules! print_message {
     ($symbol:expr, $color:ident, $($arg:tt)*) => {{
-        use colored::Colorize;
-        println!("{} {}", $symbol.$color().bold(), format!($($arg)*))
+        if !$crate::common::ui::json() {
+            use colored::Colorize;
+            println!("{} {}", $symbol.$color().bold(), format!($($arg)*))
+        }
     }};
 }
 pub(crate) use print_message;

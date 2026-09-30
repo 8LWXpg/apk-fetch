@@ -10,18 +10,18 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
 	let registry = build_registry(&cli.command);
 
 	match cli.command {
-		Command::Search { query, .. } => commands::search(&registry, &query, cli.json),
-		Command::Versions { package_id, .. } => commands::versions(&registry, &package_id, cli.json),
+		Command::Search { query, .. } => commands::search(&registry, &query),
+		Command::Versions { package_id, .. } => commands::versions(&registry, &package_id),
 		Command::Get {
 			package_id,
 			version,
 			arch,
 			output,
 			..
-		} => commands::get(&registry, &package_id, version.as_deref(), arch, &output, cli.json),
+		} => commands::get(&registry, &package_id, version.as_deref(), arch, &output),
 		Command::Providers { cmd } => match cmd {
-			ProvidersCmd::List => commands::providers_list(&registry, cli.json),
-			ProvidersCmd::Check { .. } => commands::providers_check(&registry, cli.json),
+			ProvidersCmd::List => commands::providers_list(&registry),
+			ProvidersCmd::Check { .. } => commands::providers_check(&registry),
 		},
 	}
 }

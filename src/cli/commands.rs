@@ -5,7 +5,7 @@ use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
 
 use super::exit::{AppError, EXIT_NETWORK, EXIT_NOT_FOUND};
-use crate::common::ui::{error, info, print_message, success, warning};
+use crate::common::ui::{error, info, json, print_message, success, warning};
 use crate::common::{self, Arch, HttpFetcher, ProviderError, ProviderFailure, ProviderId, ProviderRegistry};
 
 fn pad(s: &str, w: usize) -> String {
@@ -30,7 +30,6 @@ fn emit<T>(provider: ProviderId, rows: &[T], label: fn(&T) -> &str, sub: fn(&T) 
 /// sweep; if nothing came back at all, the last one becomes the exit status.
 fn fan_out<T, F, R>(
 	registry: &ProviderRegistry,
-	json: bool,
 	verb: &str,
 	notfound: &str,
 	mut fetch: F,
@@ -45,32 +44,26 @@ where
 	let mut hit = false;
 	let mut last = None;
 	for id in registry.names() {
-		if !json {
-			info!("{} {}...", verb, id);
-		}
+		info!("{} {}...", verb, id);
 		match fetch(id) {
 			Ok(rows) if rows.is_empty() => {
-				if !json {
-					warning!("{}: no results", id);
-				}
+				warning!("{}: no results", id);
 			}
 			Ok(rows) => {
 				hit = true;
-				if json {
+				if json() {
 					merged.push((id, rows));
 				} else {
 					render(id, &rows);
 				}
 			}
 			Err(f) => {
-				if !json {
-					warning!("{f}");
-				}
+				warning!("{f}");
 				last = Some(f.into());
 			}
 		}
 	}
-	if json {
+	if json() {
 		let mut map = serde_json::Map::new();
 		for (id, rows) in merged {
 			map.insert(id.to_string(), serde_json::to_value(rows)?);
@@ -85,10 +78,9 @@ where
 	Ok(())
 }
 
-pub fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Result<(), AppError> {
+pub fn search(registry: &ProviderRegistry, query: &str) -> Result<(), AppError> {
 	fan_out(
 		registry,
-		json,
 		"searching",
 		&format!("no results for '{query}'"),
 		|id| registry.search(id, query),
@@ -96,10 +88,9 @@ pub fn search(registry: &ProviderRegistry, query: &str, json: bool) -> Result<()
 	)
 }
 
-pub fn versions(registry: &ProviderRegistry, pkg: &str, json: bool) -> Result<(), AppError> {
+pub fn versions(registry: &ProviderRegistry, pkg: &str) -> Result<(), AppError> {
 	fan_out(
 		registry,
-		json,
 		"listing versions from",
 		&format!("no versions for '{pkg}'"),
 		|id| registry.versions(id, pkg),
@@ -113,7 +104,6 @@ pub fn get(
 	version: Option<&str>,
 	arch: Arch,
 	output: &Path,
-	json: bool,
 ) -> Result<(), AppError> {
 	let order: Vec<&str> = registry.names().iter().map(|p| p.as_str()).collect();
 	info!("resolving {} ({})...", pkg, order.join(" -> "));
@@ -145,7 +135,7 @@ pub fn get(
 			},
 		})?;
 
-	if json {
+	if json() {
 		println!(
 			"{}",
 			serde_json::json!({
@@ -161,9 +151,9 @@ pub fn get(
 	Ok(())
 }
 
-pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
+pub fn providers_list(registry: &ProviderRegistry) -> Result<(), AppError> {
 	let names = registry.names();
-	if json {
+	if json() {
 		let rows: Vec<_> = names
 			.iter()
 			.enumerate()
@@ -178,23 +168,23 @@ pub fn providers_list(registry: &ProviderRegistry, json: bool) -> Result<(), App
 	Ok(())
 }
 
-pub fn providers_check(registry: &ProviderRegistry, json: bool) -> Result<(), AppError> {
+pub fn providers_check(registry: &ProviderRegistry) -> Result<(), AppError> {
 	let names = registry.names();
 	let mut rows = Vec::new();
 	for id in &names {
 		if let Err(f) = registry.check(*id) {
-			if json {
+			if json() {
 				rows.push(serde_json::json!({ "name": id, "status": format!("{}", f.source) }));
 			} else {
 				error!("{f}");
 			}
-		} else if json {
+		} else if json() {
 			rows.push(serde_json::json!({ "name": id, "status": "ok" }));
 		} else {
 			success!("{}: ok", id);
 		}
 	}
-	if json {
+	if json() {
 		println!("{}", serde_json::to_string_pretty(&rows)?);
 	}
 	Ok(())
