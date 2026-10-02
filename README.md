@@ -1,8 +1,15 @@
 # apk-fetch
 
-Multi-source command line APK downloader with fallback. Resolves a package from 
-a chain of third-party mirrors (APKCombo, APKPure, APKMirror), picks a APK build
-for your ABI, and downloads it, retrying the next source if one fails.
+A fast, multi-source command-line APK downloader with automatic fallback. It
+resolves Android package names across multiple third-party mirrors (APKCombo,
+APKPure, APKMirror), selects the correct build for your target ABI, and gracefully
+retries down the chain if a source fails.
+
+## Prerequisite
+
+- **`curl` 7.12.3+**: Required on your `PATH` for all network requests.
+  > **Note:** `curl` must be compiled with `zlib` support.
+- **`curl-impersonate` (Optional / Recommended)**: Some mirrors detect and block stock `curl` via TLS fingerprinting. If you encounter a `Blocked` error that does not happen in a browser, place [curl-impersonate](https://github.com/lexiforest/curl-impersonate) ahead of stock `curl` on your `PATH`.
 
 ## Quickstart
 
@@ -13,14 +20,12 @@ apk-fetch search youtube
 # List published versions of a package
 apk-fetch versions com.google.android.youtube
 
-# Download the latest build for your ABI into ./downloads
-apk-fetch get com.google.android.youtube --output downloads
+# Download the latest build into ./downloads
+apk-fetch get com.google.android.youtube --out-dir downloads
 
 # Pin a version, or ask a specific mirror first
 apk-fetch get com.google.android.youtube --version 21.37.47 --provider apkpure
 ```
-
-Requires `curl` on your `PATH` — all fetching goes through it.
 
 ## Install
 
@@ -78,14 +83,14 @@ apk-fetch get com.google.android.youtube --version 21.37.47
 apk-fetch get com.google.android.youtube --arch universal
 apk-fetch get com.google.android.youtube --provider apkmirror
 apk-fetch get com.google.android.youtube --priority apkcombo,apkmirror
-apk-fetch get com.google.android.youtube --output ~/Downloads
+apk-fetch get com.google.android.youtube --out-dir ~/Downloads
 ```
 
 - `--version <V>` — exact version to fetch.
 - `--provider <name>` — try only this provider.
 - `--priority <a,b>` — ordered list of providers to try until one resolves.
 - `--arch <abi>` — `arm64-v8a` (default), `armeabi-v7a`, `x86`, `x86_64`, or `universal`; falls back to a universal build when the exact ABI is unavailable.
-- `--output <dir>` — save directory (default: `.`).
+- `--out-dir <dir>` — save directory (default: `.`).
 
 ### `providers`
 

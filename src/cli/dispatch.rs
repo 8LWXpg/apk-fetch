@@ -16,9 +16,9 @@ pub fn dispatch(cli: Cli) -> Result<(), AppError> {
 			package_id,
 			version,
 			arch,
-			output,
+			out_dir,
 			..
-		} => commands::get(&registry, &package_id, version.as_deref(), arch, &output),
+		} => commands::get(&registry, &package_id, version.as_deref(), arch, &out_dir),
 		Command::Providers { cmd } => match cmd {
 			ProvidersCmd::List => commands::providers_list(&registry),
 			ProvidersCmd::Check { .. } => commands::providers_check(&registry),

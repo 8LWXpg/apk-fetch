@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Rename `--output` to `--out-dir`.
+
 ## 1.0.2
 
 - Disable stdout print when `--json` is passed.

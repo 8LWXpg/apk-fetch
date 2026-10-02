@@ -103,17 +103,17 @@ pub fn get(
 	pkg: &str,
 	version: Option<&str>,
 	arch: Arch,
-	output: &Path,
+	out_dir: &Path,
 ) -> Result<(), AppError> {
 	let order: Vec<&str> = registry.names().iter().map(|p| p.as_str()).collect();
 	info!("resolving {} ({})...", pkg, order.join(" -> "));
 	let target = registry.resolve_with_fallback(pkg, version, arch)?;
 
-	std::fs::create_dir_all(output).map_err(|e| AppError {
+	std::fs::create_dir_all(out_dir).map_err(|e| AppError {
 		code: EXIT_NETWORK,
 		source: anyhow!("{e}"),
 	})?;
-	let dest = output.join(common::download_filename(pkg, &target.version, target.arch));
+	let dest = out_dir.join(common::download_filename(pkg, &target.version, target.arch));
 
 	info!(
 		"downloading {} {} ({}) from {} ({})",

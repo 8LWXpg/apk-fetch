@@ -66,7 +66,7 @@ pub enum Command {
 		arch: Arch,
 		/// Output directory.
 		#[arg(long, default_value = ".")]
-		output: PathBuf,
+		out_dir: PathBuf,
 	},
 	/// Provider management.
 	Providers {
