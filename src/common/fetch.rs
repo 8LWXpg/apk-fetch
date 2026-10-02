@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use std::{fmt, fs, io, thread};
+use std::{fs, thread};
 
 use crate::common::contract::ProviderError;
 
@@ -18,9 +18,6 @@ pub const MAX_RETRIES: u32 = 3;
 pub const RETRY_BASE_BACKOFF: Duration = Duration::from_millis(500);
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
     (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-
-/// Marks curl's `-w` line in stdout, past the header dump `-D -` writes there.
-const META_SENTINEL: &str = "\u{1f}apk-fetch\u{1f}";
 
 /// Cloudflare / anti-bot challenge fingerprints in a response body.
 const BLOCK_SIGNATURES: &[&str] = &[
@@ -62,51 +59,40 @@ macro_rules! cancelled {
 		}
 	};
 }
+struct Scratch(PathBuf);
 
-fn network_err(e: impl fmt::Display) -> ProviderError {
-	ProviderError::Network(io::Error::other(e.to_string()))
-}
-
-/// Extension from the last `Content-Disposition` filename in a header dump.
-fn ext_from_disposition(headers: &str) -> Option<String> {
-	let ext = headers
-		.lines()
-		.rev() // Walk from the last header backwards...
-		.filter(|l| {
-			l.get(..20)
-				.is_some_and(|p| p.eq_ignore_ascii_case("content-disposition:"))
-		})
-		.find_map(|l| {
-			// `filename="x.apk"`, or RFC 5987 `filename*=UTF-8\x.apk`.
-			let v = l.split_once("filename")?.1.trim_start_matches(['*', '=']);
-			let v = v.rsplit("''").next()?.trim().trim_matches('"');
-			v.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase())
-		})?;
-	(ext.len() <= 8 && ext.chars().all(|c| c.is_ascii_alphanumeric())).then_some(ext)
-}
-
-/// The other two things the site tells us, in descending trustworthiness.
-fn ext_from_type_or_url(content_type: &str, url: &str) -> Option<String> {
-	let ct = content_type.to_ascii_lowercase();
-	if ct.contains("xapk") {
-		return Some("xapk".to_string());
+impl Scratch {
+	/// Fresh, empty dir next to `dest`.
+	fn new(dest: &Path) -> Result<Self, ProviderError> {
+		let name = dest.file_name().unwrap_or_default().to_string_lossy();
+		let dir = dest.with_file_name(format!(".{name}.part"));
+		let _ = fs::remove_dir_all(&dir);
+		fs::create_dir_all(&dir)?;
+		Ok(Self(dir))
 	}
-	if ct.contains("vnd.android.package-archive") {
-		return Some("apk".to_string());
+
+	fn path(&self) -> &Path {
+		&self.0
 	}
-	let hay = url.to_ascii_lowercase();
-	["xapk", "apkm", "apks", "apk"]
-		.into_iter()
-		.find(|ext| hay.contains(&format!(".{ext}?")) || hay.ends_with(&format!(".{ext}")))
-		.map(str::to_string)
+
+	/// The single file curl wrote.
+	fn only_file(&self) -> Result<PathBuf, ProviderError> {
+		let mut entries = fs::read_dir(&self.0)?;
+		let first = entries
+			.next()
+			.ok_or_else(|| ProviderError::network("curl wrote no file"))??
+			.path();
+		if entries.next().is_some() {
+			return Err(ProviderError::network("curl wrote more than one file"));
+		}
+		Ok(first)
+	}
 }
 
-/// Served extension from curl's stdout (header dumps, then the `-w` line after
-/// [`META_SENTINEL`]): `Content-Disposition`, then `Content-Type`, then final URL.
-fn served_ext(curl_stdout: &str) -> Option<String> {
-	let (headers, meta) = curl_stdout.rsplit_once(META_SENTINEL).unwrap_or((curl_stdout, ""));
-	let (ct, url) = meta.split_once('\t').unwrap_or((meta, ""));
-	ext_from_disposition(headers).or_else(|| ext_from_type_or_url(ct, url))
+impl Drop for Scratch {
+	fn drop(&mut self) {
+		let _ = fs::remove_dir_all(&self.0);
+	}
 }
 
 /// First bytes of a local ZIP (APK/XAPK) — `PK\x03\x04`, or the empty-archive
@@ -132,7 +118,7 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 	match code {
 		404 | 410 => Some(ProviderError::NotFound(format!("got {code} for {url}"))),
 		403 | 429 => Some(ProviderError::Blocked),
-		s if s >= 500 => Some(network_err(format!("upstream returned {s}"))),
+		s if s >= 500 => Some(ProviderError::network(format!("upstream returned {s}"))),
 		_ => None,
 	}
 }
@@ -260,7 +246,7 @@ impl HttpFetcher {
 				.args(extra_args)
 				.args(["-w", "\n%{http_code}"])
 				.output()
-				.map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
+				.map_err(ProviderError::CurlSpawn)?;
 
 			cancelled!();
 
@@ -271,7 +257,7 @@ impl HttpFetcher {
 					thread::sleep(RETRY_BASE_BACKOFF * attempt);
 					continue;
 				}
-				return Err(network_err(format!(
+				return Err(ProviderError::network(format!(
 					"curl exited {code:?}: {}",
 					String::from_utf8_lossy(&output.stderr).trim()
 				)));
@@ -322,12 +308,12 @@ impl HttpFetcher {
 				"\n%{url_effective}",
 			])
 			.output()
-			.map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
+			.map_err(ProviderError::CurlSpawn)?;
 
 		cancelled!();
 
 		if !output.status.success() {
-			return Err(network_err(format!(
+			return Err(ProviderError::network(format!(
 				"curl exited {:?}: {}",
 				output.status.code(),
 				String::from_utf8_lossy(&output.stderr).trim()
@@ -350,6 +336,8 @@ impl HttpFetcher {
 
 	/// Stream a URL to `dest` (extension-less; the response decides `.apk` vs
 	/// `.xapk`/`.apkm`). Returns the path written. Failure leaves no file.
+	///
+	/// `dest`: Path without ext.
 	pub fn download_to_file(
 		&self,
 		url: &str,
@@ -364,47 +352,40 @@ impl HttpFetcher {
 		result
 	}
 
+	/// `dest`: Path without ext
 	fn curl_to_file(url: &str, headers: &[(String, String)], dest: &Path) -> Result<PathBuf, ProviderError> {
-		let mut child = Self::base_cmd(url, headers, true)
-			.args(["--fail", "--retry", &MAX_RETRIES.to_string(), "-o"])
-			.arg(dest)
+		let scratch = Scratch::new(dest)?; // fresh dir beside dest, Drop = remove_dir_all
+		let status = Self::base_cmd(url, headers, true)
 			.args([
-				"-D",
-				"-",
-				"-w",
-				&format!("\n{META_SENTINEL}%{{content_type}}\t%{{url_effective}}"),
+				"--fail",
+				"--retry",
+				&MAX_RETRIES.to_string(),
+				"-O",
+				"-J",
+				"--output-dir",
 			])
-			.stdout(Stdio::piped())
+			.arg(scratch.path())
+			.stdout(Stdio::null())
 			.stderr(Stdio::inherit())
 			.spawn()
-			.map_err(|e| network_err(format!("could not run `curl` (is it installed and on PATH?): {e}")))?;
-
-		// Ctrl+C reaches curl too (same foreground process group), so by the
-		// time wait() returns either it died with us or the download finished.
-		let status = child.wait().map_err(network_err)?;
-		cancelled!(clear);
-
-		let mut stdout_buf = String::new();
-		if let Some(mut s) = child.stdout.take() {
-			let _ = s.read_to_string(&mut stdout_buf);
-		}
-
+			.map_err(ProviderError::CurlSpawn)?
+			.wait()?;
+		cancelled!(clear); // Drop wipes scratch on every path
 		if !status.success() {
-			// curl already printed the reason to stderr.
-			return Err(network_err(format!("curl download failed ({status})")));
+			return Err(ProviderError::network(format!("curl download failed ({status})")));
 		}
-		// Non-ZIP payload = error/landing page that came back 200.
-		if !starts_with_zip_magic(dest) {
-			return Err(network_err(
-				"downloaded file is not an APK (server returned a non-package response)",
-			));
+
+		let saved = scratch.only_file()?; // read_dir: exactly one entry
+		if !starts_with_zip_magic(&saved) {
+			return Err(ProviderError::network("server returned a non-APK response"));
 		}
-		let Some(ext) = served_ext(&stdout_buf) else {
-			return Ok(dest.to_path_buf());
-		};
-		// Appended, not `set_extension`: the stem holds dotted version numbers.
+		let ext = saved
+			.extension()
+			.and_then(|e| e.to_str())
+			.filter(|e| matches!(e.to_ascii_lowercase().as_str(), "apk" | "xapk" | "apkm" | "apks"))
+			.ok_or_else(|| ProviderError::network("server gave no recognizable package filename"))?;
 		let target = PathBuf::from(format!("{}.{ext}", dest.display()));
-		fs::rename(dest, &target).map_err(network_err)?;
+		fs::rename(&saved, &target)?;
 		Ok(target)
 	}
 }
@@ -462,61 +443,5 @@ mod tests {
 		assert!(matches!(map_http_status(429, u), Some(ProviderError::Blocked)));
 		assert!(matches!(map_http_status(404, u), Some(ProviderError::NotFound(_))));
 		assert!(map_http_status(200, u).is_none());
-	}
-
-	#[test]
-	fn disposition_wins_and_takes_the_last_redirect() {
-		// What `curl -D -` writes: one header block per hop, CRLF-terminated.
-		let headers = [
-			"HTTP/1.1 302 Found",
-			"Content-Disposition: attachment; filename=\"first\".apk\"",
-			"",
-			"HTTP/1.1 200 OK",
-			"Content-Type: application/octet-stream",
-			"Content-Disposition: attachment; filename=\"yt_21.35.448_apkmirror.com\".apkm\"",
-			"",
-		]
-		.join("\r\n");
-		assert_eq!(ext_from_disposition(&headers).as_deref(), Some("apkm"));
-	}
-
-	#[test]
-	fn disposition_rfc5987_and_junk() {
-		assert_eq!(
-			ext_from_disposition("Content-Disposition: attachment; filename*=UTF-8''app.xapk").as_deref(),
-			Some("xapk")
-		);
-		// A hostile name can't smuggle a path or a long suffix through.
-		assert_eq!(
-			ext_from_disposition("content-disposition: attachment; filename=\"x./../etc/passwd\""),
-			None
-		);
-		assert_eq!(ext_from_disposition("Content-Type: text/html"), None);
-	}
-
-	#[test]
-	fn served_ext_splits_curl_stdout() {
-		let out = format!(
-			"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n\n{META_SENTINEL}application/octet-stream\thttps://cdn/x.xapk?t=1"
-		);
-		assert_eq!(served_ext(&out).as_deref(), Some("xapk"));
-		assert_eq!(served_ext("no sentinel at all"), None);
-	}
-
-	#[test]
-	fn falls_back_to_type_then_url() {
-		assert_eq!(
-			ext_from_type_or_url("application/vnd.android.package-archive", "").as_deref(),
-			Some("apk")
-		);
-		assert_eq!(
-			ext_from_type_or_url("application/octet-stream", "https://cdn/x.apkm?token=1").as_deref(),
-			Some("apkm")
-		);
-		// `download.php?id=&key=` tells us nothing — the file keeps its bare name.
-		assert_eq!(
-			ext_from_type_or_url("application/octet-stream", "https://a/download.php?id=1&key=z"),
-			None
-		);
 	}
 }

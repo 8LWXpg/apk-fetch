@@ -31,7 +31,7 @@ pub fn provider_error_code(e: &ProviderError) -> u8 {
 		ProviderError::Blocked => EXIT_BLOCKED,
 		ProviderError::Network(_) => EXIT_NETWORK,
 		ProviderError::Cancelled => EXIT_CANCELLED,
-		ProviderError::ParseError(_) => EXIT_GENERIC,
+		ProviderError::CurlSpawn(_) | ProviderError::IO(_) | ProviderError::ParseError(_) => EXIT_GENERIC,
 	}
 }
 
@@ -71,7 +71,6 @@ mod tests {
 		let no_match = ProviderError::NoMatch("search returned nothing".into());
 		assert_eq!(provider_error_code(&http), EXIT_NOT_FOUND);
 		assert_eq!(provider_error_code(&no_match), EXIT_NOT_FOUND);
-		// Only NotFound is a bare pass-through; NoMatch must name its class.
 		assert_eq!(http.to_string(), "got 404 for https://x/y");
 		assert_eq!(no_match.to_string(), "no match: search returned nothing");
 	}

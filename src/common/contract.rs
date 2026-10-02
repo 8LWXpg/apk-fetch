@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{io, marker::PhantomData};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -202,6 +202,12 @@ pub enum ProviderError {
 	#[error("blocked by anti-bot / rate limit (challenge page, 403, or 429)")]
 	Blocked,
 
+	#[error("could not spawn `curl`: {0}")]
+	CurlSpawn(io::Error),
+
+	#[error("{0}")]
+	IO(#[from] io::Error),
+
 	/// The site itself answered 404 or 410. The string says what was missing.
 	#[error("{0}")]
 	NotFound(String),
@@ -215,7 +221,7 @@ pub enum ProviderError {
 	ParseError(String),
 
 	#[error("network error: {0}")]
-	Network(#[from] std::io::Error),
+	Network(String),
 
 	/// Ctrl+C
 	#[error("cancelled")]
@@ -242,6 +248,10 @@ impl ProviderError {
 
 	pub fn no_match(msg: impl std::fmt::Display, at: impl std::fmt::Display) -> Self {
 		Self::NoMatch(format!("{msg}: {at}"))
+	}
+
+	pub fn network(msg: impl std::fmt::Display) -> Self {
+		ProviderError::Network(msg.to_string())
 	}
 }
 
