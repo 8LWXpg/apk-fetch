@@ -50,9 +50,9 @@ fn build_registry(cmd: &Command) -> ProviderRegistry {
 		.copied()
 		.map(|id| -> Box<dyn Provider> {
 			match id {
-				ProviderId::Apkmirror => Box::new(ApkMirror::default()),
-				ProviderId::Apkpure => Box::new(ApkPure::default()),
 				ProviderId::Apkcombo => Box::new(ApkCombo::default()),
+				ProviderId::Apkpure => Box::new(ApkPure::default()),
+				ProviderId::Apkmirror => Box::new(ApkMirror::default()),
 			}
 		})
 		.collect::<ProviderRegistry>()

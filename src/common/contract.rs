@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
-	Apkmirror,
-	Apkpure,
 	Apkcombo,
+	Apkpure,
+	Apkmirror,
 }
 
 impl ProviderId {
@@ -18,9 +18,9 @@ impl ProviderId {
 
 	pub const fn as_str(&self) -> &'static str {
 		match self {
-			ProviderId::Apkmirror => "apkmirror",
-			ProviderId::Apkpure => "apkpure",
 			ProviderId::Apkcombo => "apkcombo",
+			ProviderId::Apkpure => "apkpure",
+			ProviderId::Apkmirror => "apkmirror",
 		}
 	}
 }
