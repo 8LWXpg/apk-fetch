@@ -127,8 +127,8 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 #[cfg(test)]
 pub type FixtureName = fn(&str) -> Option<&'static str>;
 
-/// A curl-backed fetcher with a per-instance throttle. Construct one per provider
-/// so each site gets its own request cadence.
+/// A curl-backed fetcher with a per-instance throttle. Construct one per provider so each site gets
+/// its own request cadence.
 pub struct HttpFetcher {
 	min_gap: Duration,
 	last_request: Cell<Option<Instant>>,
@@ -205,9 +205,8 @@ impl HttpFetcher {
 			"-A",
 			USER_AGENT,
 		]);
-		// Just the UA: mirror-site WAFs (APKPure's especially) flag a lone
-		// `Accept-Language` on top of curl's fingerprint, and neither site needs
-		// more than the UA to serve pages.
+		// Just the UA: mirror-site WAFs (APKPure's especially) flag a lone `Accept-Language` on top
+		// of curl's fingerprint, and neither site needs more than the UA to serve pages.
 		for (k, v) in headers {
 			cmd.arg("-H").arg(format!("{k}: {v}"));
 		}
@@ -334,8 +333,9 @@ impl HttpFetcher {
 		Ok(effective)
 	}
 
-	/// Stream a URL to `dest` (extension-less; the response decides `.apk` vs
-	/// `.xapk`/`.apkm`). Returns the path written. Failure leaves no file.
+	/// Download a URL to `dest` (extension-less). curl writes the server-named file into a scratch
+	/// dir; its extension becomes the final one. Returns the path written (`{dest}.{ext}`). Failure
+	/// leaves no file.
 	///
 	/// `dest`: Path without ext.
 	pub fn download_to_file(
@@ -352,6 +352,8 @@ impl HttpFetcher {
 		result
 	}
 
+	/// Same as `download_to_file`, minus the failure cleanup.
+	///
 	/// `dest`: Path without ext
 	fn curl_to_file(url: &str, headers: &[(String, String)], dest: &Path) -> Result<PathBuf, ProviderError> {
 		let scratch = Scratch::new(dest)?; // fresh dir beside dest, Drop = remove_dir_all

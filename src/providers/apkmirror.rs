@@ -100,8 +100,8 @@ impl Provider for ApkMirror {
 			}
 		};
 
-		// 2. Variants table -> download page. If there's no table, we may have been
-		//    redirected straight onto a download page (single-variant app).
+		// 2. Variants table -> download page. If there's no table, we may have been redirected
+		//    straight onto a download page (single-variant app).
 		let version_doc = Html::parse_document(&self.fetcher.get_text(version_page.as_str())?);
 		let variants = parse::parse_variants(&version_doc);
 		let (resolved_version, resolved_arch, download_page_doc) = if variants.is_empty() {

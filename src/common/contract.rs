@@ -1,4 +1,5 @@
-use std::{io, marker::PhantomData};
+use std::io;
+use std::marker::PhantomData;
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};

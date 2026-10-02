@@ -70,7 +70,9 @@ fn package_id(img: ElementRef) -> Result<String, ProviderError> {
 	let src = img
 		.attr("src")
 		.ok_or_else(|| ProviderError::parse_error("no src", img.html()))?;
-	// `wp-content/themes/APKMirror/ap_resize/ap_resize.php?src=https%3A%2F%2Fdownloadr2.apkmirror.com%2Fwp-content%2Fuploads%2F2024%2F10%2F21%2F67189d60d72a1_com.google.android.youtube.png&w=32&h=32&q=100`
+	// `/wp-content/themes/APKMirror/ap_resize/ap_resize.php?src=https%3A%2F%2Fdownloadr2.apkmirror.
+	// com%2Fwp-content%2Fuploads%2F2024%2F10%2F21%2F67189d60d72a1_com.google.android.youtube.png&
+	// w=32&h=32&q=100`
 	let start = src
 		.rfind('_')
 		.ok_or_else(|| ProviderError::parse_error("malformed img src", src))?
@@ -84,9 +86,8 @@ fn package_id(img: ElementRef) -> Result<String, ProviderError> {
 /// Rank a **name** query's hits, because APKMirror's own search is a plain
 /// substring check with alphabetic ordering. Two terms, in priority order:
 ///
-/// - `coverage`: for each query token, its best [`token_match`] against the
-///   version-stripped title, summed — so every word of `youtube music` counts
-///   and an off-title hit sorts last.
+/// - `coverage`: for each query token, its best [`token_match`] against the version-stripped title,
+///   summed — so every word of `youtube music` counts and an off-title hit sorts last.
 /// - `extra`: the spin-off penalty. Naming the channel (`youtube beta`) lifts it.
 pub fn rank(hit: &SearchHit, query: &str) -> (u8, u8) {
 	fn tokens(s: &str) -> impl Iterator<Item = &str> {

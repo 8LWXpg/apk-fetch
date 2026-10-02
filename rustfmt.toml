@@ -3,3 +3,5 @@ max_width = 120
 newline_style = "Unix"
 group_imports = "StdExternalCrate"
 imports_granularity = "Module"
+wrap_comments = true
+comment_width = 100
