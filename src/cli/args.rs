@@ -9,11 +9,11 @@ use crate::common::{Arch, ProviderId};
 
 #[derive(Parser)]
 #[command(
-    name = "apk-fetch",
-    version,
-    about = "Download APKs from third-party mirrors",
-    styles = get_styles(),
-    arg_required_else_help = true
+	name = "apk-fetch",
+	version,
+	about = "Download APKs from third-party mirrors",
+	styles = get_styles(),
+	arg_required_else_help = true
 )]
 pub struct Cli {
 	/// Machine-readable JSON output.

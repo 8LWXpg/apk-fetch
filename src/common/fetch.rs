@@ -17,7 +17,7 @@ pub const THROTTLE_DELAY: Duration = Duration::from_millis(1200);
 pub const MAX_RETRIES: u32 = 3;
 pub const RETRY_BASE_BACKOFF: Duration = Duration::from_millis(500);
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-    (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+	(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /// Cloudflare / anti-bot challenge fingerprints in a response body.
 const BLOCK_SIGNATURES: &[&str] = &[
