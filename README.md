@@ -9,7 +9,7 @@ retries down the chain if a source fails.
 
 - **`curl` 7.73+**: Required on your `PATH` for all network requests.
   > **Note:** `curl` must be compiled with `zlib` support.
-- **`curl-impersonate` (Optional / Recommended)**: Some mirrors detect and block stock `curl` via TLS fingerprinting. If you encounter a `Blocked` error that does not happen in a browser, place [curl-impersonate](https://github.com/lexiforest/curl-impersonate) ahead of stock `curl` on your `PATH`.
+- **`curl-impersonate` (Optional / Recommended)**: Some mirrors detect and block stock `curl` via TLS fingerprinting. If you encounter a `Blocked` error that does not happen in a browser, set `APK_FETCH_CURL` to [curl-impersonate](https://github.com/lexiforest/curl-impersonate) wrapper path.
 
 ## Quickstart
 

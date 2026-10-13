@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use std::{fs, thread};
@@ -18,6 +19,8 @@ pub const MAX_RETRIES: u32 = 3;
 pub const RETRY_BASE_BACKOFF: Duration = Duration::from_millis(500);
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
 	(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+static CURL: LazyLock<String> = LazyLock::new(|| std::env::var("APK_FETCH_CURL").unwrap_or("curl".into()));
 
 /// Cloudflare / anti-bot challenge fingerprints in a response body.
 const BLOCK_SIGNATURES: &[&str] = &[
@@ -195,7 +198,7 @@ impl HttpFetcher {
 	}
 
 	fn base_cmd(url: &str, headers: &[(String, String)], progress: bool) -> Command {
-		let mut cmd = Command::new("curl");
+		let mut cmd = Command::new(&*CURL);
 		cmd.arg(if progress { "-S" } else { "-sS" });
 		cmd.args([
 			"-L",
@@ -243,7 +246,7 @@ impl HttpFetcher {
 			let output = Self::base_cmd(url, headers, false)
 				.args(["--max-time", &REQUEST_TIMEOUT_SECS.to_string()])
 				.args(extra_args)
-				.args(["-w", "\n%{http_code}"])
+				.args(["-w", "\\n%{http_code}"])
 				.output()
 				.map_err(ProviderError::CurlSpawn)?;
 
@@ -288,7 +291,7 @@ impl HttpFetcher {
 		}
 	}
 
-	/// Resolve URL redirection. No redirect means the URL is returned unchanged.
+	/// Resolve URL redirection. Return unchanged means no redirection.
 	pub fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
@@ -304,7 +307,7 @@ impl HttpFetcher {
 				"--max-time",
 				&REQUEST_TIMEOUT_SECS.to_string(),
 				"-w",
-				"\n%{url_effective}",
+				"\\n%{url_effective}",
 			])
 			.output()
 			.map_err(ProviderError::CurlSpawn)?;
@@ -422,6 +425,101 @@ fn trim_html(html: &str) -> String {
 	out
 }
 
+/// `cargo test curl -- --ignored`
+/// Set `APK_FETCH_CURL` to run them through a wrapper.
+#[cfg(test)]
+mod curl {
+	use super::*;
+
+	const H: &str = "https://httpbin.org";
+
+	fn f() -> HttpFetcher {
+		HttpFetcher::with_delay(Duration::ZERO)
+	}
+
+	#[test]
+	#[ignore = "network"]
+	fn curl_200_strips_status_suffix() {
+		let body = f().get_text(&format!("{H}/get")).unwrap();
+		assert!(body.trim_end().ends_with('}'), "status suffix leaked: {body:?}");
+	}
+
+	#[test]
+	#[ignore = "network"]
+	fn curl_status_mapping() {
+		assert!(matches!(
+			f().get_text(&format!("{H}/status/404")),
+			Err(ProviderError::NotFound(_))
+		));
+		assert!(matches!(
+			f().get_text(&format!("{H}/status/403")),
+			Err(ProviderError::Blocked)
+		));
+		assert!(matches!(
+			f().get_text(&format!("{H}/status/429")),
+			Err(ProviderError::Blocked)
+		));
+	}
+
+	/// Slow: retries 3 times with backoff (~3s).
+	#[test]
+	#[ignore = "network"]
+	fn curl_503_retries_then_network_error() {
+		assert!(matches!(
+			f().get_text(&format!("{H}/status/503")),
+			Err(ProviderError::Network(_))
+		));
+	}
+
+	/// 200 with `Just a moment...`.
+	#[test]
+	#[ignore = "network"]
+	fn curl_block_signature_on_200() {
+		assert!(matches!(
+			f().get_text(&format!("{H}/base64/SnVzdCBhIG1vbWVudC4uLg==")),
+			Err(ProviderError::Blocked)
+		));
+	}
+
+	#[test]
+	#[ignore = "network"]
+	fn curl_resolve_url() {
+		assert_eq!(f().resolve_url(&format!("{H}/redirect/2")).unwrap(), format!("{H}/get"));
+		let same = format!("{H}/get");
+		assert_eq!(f().resolve_url(&same).unwrap(), same);
+	}
+
+	#[test]
+	#[ignore = "network"]
+	fn curl_post_form() {
+		let body = f().post_form(&format!("{H}/post"), &[("a", "b")]).unwrap();
+		assert!(body.contains("\"form\"") && body.contains("\"a\"") && body.contains("\"b\""));
+	}
+
+	#[test]
+	#[ignore = "network"]
+	fn curl_forwards_headers() {
+		let h = vec![("Referer".to_string(), "https://example.test/x".to_string())];
+		let body = f().request(&format!("{H}/headers"), &h, &[]).unwrap();
+		assert!(body.contains("https://example.test/x"), "{body}");
+	}
+
+	/// non-APK body -> error, and no file or scratch dir left behind.
+	#[test]
+	#[ignore = "network"]
+	fn curl_download_rejects_non_apk_and_cleans_up() {
+		let dir = std::env::temp_dir().join("apk-fetch-curl-test");
+		let _ = fs::remove_dir_all(&dir);
+		fs::create_dir_all(&dir).unwrap();
+		let dest = dir.join("out");
+
+		let url = format!("{H}/response-headers?Content-Disposition=attachment%3B%20filename%3Dx.apk");
+		let err = f().download_to_file(&url, &[], &dest).unwrap_err();
+		assert!(err.to_string().contains("non-APK"), "{err}");
+		assert_eq!(fs::read_dir(&dir).unwrap().count(), 0, "leftovers in {dir:?}");
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -445,5 +543,12 @@ mod tests {
 		assert!(matches!(map_http_status(429, u), Some(ProviderError::Blocked)));
 		assert!(matches!(map_http_status(404, u), Some(ProviderError::NotFound(_))));
 		assert!(map_http_status(200, u).is_none());
+	}
+
+	#[test]
+	fn no_newlines_in_args() {
+		let cmd = HttpFetcher::base_cmd("https://x/?a=b&c=d", &[("Referer".into(), "https://y".into())], false);
+		// batch-file spawning rejects \r and \n in any arg
+		assert!(cmd.get_args().all(|a| !a.to_string_lossy().contains(['\r', '\n'])));
 	}
 }
