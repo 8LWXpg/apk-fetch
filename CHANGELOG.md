@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 - Rename `--output` to `--out-dir`.
+- Allow setting curl path in env.
 
 ## 1.0.2
 
