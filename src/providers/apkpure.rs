@@ -1,17 +1,16 @@
-//! APKPure is package-id-addressable — `/x/{pkg}` resolves to the app page and
+//! APKPure is package-id-addressable
+//! — `/x/{pkg}/download`: latest download
+//! - `/x/{pkg}/download/{version}`: versioned download
 //! `d.apkpure.com/b/APK/{pkg}?versionCode=...` 302 straight to the APK.
-//!
-//! `arch` is accepted but not honored: APKPure's web endpoint serves one build
-//! per app regardless of ABI so the resolved `arch` is always `Universal`.
 mod parse;
-use parse::Url;
+use parse::{Url, Variant};
 use scraper::Html;
 
 use crate::common::contract::{
 	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
-use crate::providers::scrape::{query, version_matches};
+use crate::providers::scrape::query;
 
 #[derive(Default)]
 pub struct ApkPure {
@@ -25,6 +24,21 @@ impl ApkPure {
 				.fetcher
 				.get_text(Url::from(format!("/x/{pkg}/versions")).as_str())?,
 		))
+	}
+
+	fn get_variants(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<Variant, ProviderError> {
+		parse::parse_variants(
+			&Html::parse_document(
+				&self.fetcher.get_text(
+					Url::from(format!(
+						"/x/{pkg}/download/{}",
+						if let Some(v) = version { v } else { "" }
+					))
+					.as_str(),
+				)?,
+			),
+			arch,
+		)
 	}
 }
 
@@ -63,29 +77,14 @@ impl Provider for ApkPure {
 			.collect())
 	}
 
-	fn download_url(&self, pkg: &str, version: Option<&str>, _arch: Arch) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
 		// `code` is APKPure `versionCode`, `None` means "latest".
-		let (code, label) = match version {
-			Some(want) => {
-				let r = self
-					.version_rows(pkg)?
-					.into_iter()
-					.find(|r| version_matches(&r.version, want))
-					.ok_or_else(|| ProviderError::NoMatch(format!("no version {want} for {pkg}")))?;
-				(Some(r.code), r.version)
-			}
-			None => {
-				let html = self.fetcher.get_text(Url::from(format!("/x/{pkg}")).as_str())?;
-				let label = parse::latest_version(&Html::parse_document(&html))
-					.ok_or_else(|| ProviderError::NoMatch(format!("no app page for {pkg}")))?;
-				(None, label)
-			}
-		};
+		let variant = self.get_variants(pkg, version, arch)?;
 
 		Ok(DownloadTarget {
-			url: parse::download_url(pkg, code.as_deref()),
-			version: label,
-			arch: Arch::all(),
+			url: variant.url.to_string(),
+			version: variant.version,
+			arch: variant.arch,
 			provider: Self::ID,
 			headers: Vec::new(),
 		})
@@ -137,11 +136,10 @@ mod tests {
 			assert_invariants(&record, pkg, app);
 
 			assert!(
-				record.target.url.starts_with("https://d.apkpure.com/b/APK/") && record.target.url.contains(pkg),
+				record.target.url.starts_with("https://d.apkpure.com/b/") && record.target.url.contains(pkg),
 				"{app}: {}",
 				record.target.url
 			);
-			assert!(record.target.arch == Arch::all());
 			assert!(record.target.headers.is_empty(), "{app}: unexpected headers");
 		}
 	}

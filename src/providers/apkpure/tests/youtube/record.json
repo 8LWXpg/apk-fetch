@@ -45,24 +45,28 @@
       "title": "YouTube Lite"
     },
     {
-      "package": "com.google.android.apps.youtube.kids",
-      "title": "YouTube Kids"
-    },
-    {
       "package": "app.revanced.android.youtube",
       "title": "YouTube ReVanced"
+    },
+    {
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
     },
     {
       "package": "com.google.android.apps.youtube.creator",
       "title": "YouTube Studio"
     },
     {
+      "package": "com.youtubepremium.youtubepremiumpro",
+      "title": "Youtube Premium"
+    },
+    {
       "package": "youtube.lite.anikinc",
       "title": "YouTube Lite"
     },
     {
-      "package": "com.youtubepremium.youtubepremiumpro",
-      "title": "Youtube Premium"
+      "package": "com.youtube.vanced",
+      "title": "youtube vanced"
     },
     {
       "package": "com.google.android.music",
@@ -71,10 +75,6 @@
     {
       "package": "com.vanced.android.youtube",
       "title": "YouTube Vanced"
-    },
-    {
-      "package": "com.youtube.vanced",
-      "title": "youtube vanced"
     },
     {
       "package": "com.apkpure.discovery",
@@ -94,6 +94,46 @@
     }
   ],
   "versions": [
+    {
+      "version": "21.41.526",
+      "uploaded": "2026-10-16"
+    },
+    {
+      "version": "21.41.525",
+      "uploaded": "2026-10-10"
+    },
+    {
+      "version": "21.40.163",
+      "uploaded": "2026-10-10"
+    },
+    {
+      "version": "21.40.162",
+      "uploaded": "2026-10-10"
+    },
+    {
+      "version": "21.40.161",
+      "uploaded": "2026-10-07"
+    },
+    {
+      "version": "21.40.161-SECONDARY",
+      "uploaded": "2026-10-04"
+    },
+    {
+      "version": "21.39.528",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "21.39.525",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "21.39.523",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "21.39.522",
+      "uploaded": "2026-09-30"
+    },
     {
       "version": "21.39.522-SECONDARY",
       "uploaded": "2026-09-27"
@@ -211,10 +251,6 @@
       "uploaded": "2026-08-04"
     },
     {
-      "version": "21.30.215",
-      "uploaded": "2026-08-04"
-    },
-    {
       "version": "21.30.211",
       "uploaded": "2026-08-01"
     },
@@ -231,20 +267,8 @@
       "uploaded": "2026-07-26"
     },
     {
-      "version": "21.29.369",
-      "uploaded": "2026-07-29"
-    },
-    {
       "version": "21.29.368",
       "uploaded": "2026-07-25"
-    },
-    {
-      "version": "21.29.367",
-      "uploaded": "2026-07-25"
-    },
-    {
-      "version": "21.29.366",
-      "uploaded": "2026-07-21"
     },
     {
       "version": "21.29.363",
@@ -397,10 +421,6 @@
     {
       "version": "21.10.493",
       "uploaded": "2026-03-07"
-    },
-    {
-      "version": "21.09.270",
-      "uploaded": "2026-03-06"
     },
     {
       "version": "21.09.266",
@@ -663,10 +683,6 @@
       "uploaded": "2025-04-10"
     },
     {
-      "version": "20.14.33",
-      "uploaded": "2025-04-03"
-    },
-    {
       "version": "20.13.41",
       "uploaded": "2025-04-10"
     },
@@ -704,8 +720,8 @@
     }
   ],
   "target": {
-    "url": "https://d.apkpure.com/b/APK/com.google.android.youtube?version=latest",
-    "version": "21.39.522-SECONDARY",
+    "url": "https://d.apkpure.com/b/APK/com.google.android.youtube?versionCode=1561303429",
+    "version": "21.41.526",
     "arch": "universal",
     "provider": "apkpure",
     "headers": []

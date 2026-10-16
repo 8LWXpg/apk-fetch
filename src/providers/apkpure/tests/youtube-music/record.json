@@ -33,20 +33,36 @@
       "title": "YouTube"
     },
     {
+      "package": "com.YouTube.iT",
+      "title": "YouTube Lite"
+    },
+    {
       "package": "com.apkpure.arya",
       "title": "APKPure Lite"
     },
     {
-      "package": "com.hexputilities.youtubelite",
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
+    },
+    {
+      "package": "com.google.android.apps.youtube.creator",
+      "title": "YouTube Studio"
+    },
+    {
+      "package": "com.youtubepremium.youtubepremiumpro",
+      "title": "Youtube Premium"
+    },
+    {
+      "package": "youtube.lite.anikinc",
       "title": "YouTube Lite"
     },
     {
-      "package": "app.revanced.android.youtube",
-      "title": "YouTube ReVanced"
+      "package": "com.youtube.vanced",
+      "title": "youtube vanced"
     },
     {
-      "package": "com.google.android.apps.youtube.mango",
-      "title": "YouTube Go"
+      "package": "com.vanced.android.youtube",
+      "title": "YouTube Vanced"
     },
     {
       "package": "com.apkpure.discovery",
@@ -61,31 +77,35 @@
       "title": "ReVanced YouTube Music"
     },
     {
-      "package": "com.tubemedia.app",
-      "title": "YouTube Playlist"
-    },
-    {
-      "package": "app.morphe.android.youtube",
-      "title": "YouTube Morphe"
-    },
-    {
-      "package": "com.javidllc.videodown",
-      "title": "Youtube Downloader"
+      "package": "com.google.android.apps.youtube.vr",
+      "title": "YouTube VR"
     },
     {
       "package": "com.browninginfo.tipsapkpure",
       "title": "Apk Pure Walkthrough"
-    },
-    {
-      "package": "canh.com.musistream",
-      "title": "Music Player: YouTube Stream"
-    },
-    {
-      "package": "akpinstaller.livetvstreming.apkpurefree06",
-      "title": "APK Pure Downloader &Installer"
     }
   ],
   "versions": [
+    {
+      "version": "9.41.52",
+      "uploaded": "2026-10-10"
+    },
+    {
+      "version": "9.40.51",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "9.39.53",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "9.39.52",
+      "uploaded": "2026-09-29"
+    },
+    {
+      "version": "9.38.52",
+      "uploaded": "2026-09-29"
+    },
     {
       "version": "9.38.51",
       "uploaded": "2026-09-20"
@@ -191,32 +211,12 @@
       "uploaded": "2026-07-08"
     },
     {
-      "version": "9.26.54",
-      "uploaded": "2026-07-08"
-    },
-    {
       "version": "9.26.51",
       "uploaded": "2026-07-01"
     },
     {
-      "version": "9.25.51",
-      "uploaded": "2026-07-01"
-    },
-    {
-      "version": "9.25.50",
-      "uploaded": "2026-06-23"
-    },
-    {
       "version": "9.24.52",
       "uploaded": "2026-06-23"
-    },
-    {
-      "version": "9.23.52",
-      "uploaded": "2026-06-11"
-    },
-    {
-      "version": "9.21.51",
-      "uploaded": "2026-05-27"
     },
     {
       "version": "9.20.53",
@@ -229,10 +229,6 @@
     {
       "version": "9.14.53",
       "uploaded": "2026-04-10"
-    },
-    {
-      "version": "9.04.50",
-      "uploaded": "2026-01-26"
     },
     {
       "version": "8.40.54",
@@ -260,9 +256,9 @@
     }
   ],
   "target": {
-    "url": "https://d.apkpure.com/b/APK/com.google.android.apps.youtube.music?version=latest",
-    "version": "9.38.51",
-    "arch": "universal",
+    "url": "https://d.apkpure.com/b/XAPK/com.google.android.apps.youtube.music?versionCode=94152240&nc=arm64-v8a&sv=26",
+    "version": "9.41.52",
+    "arch": "arm64-v8a",
     "provider": "apkpure",
     "headers": []
   }

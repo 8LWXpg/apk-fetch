@@ -2,13 +2,11 @@ use chrono::NaiveDate;
 use scraper::Html;
 use versions::Versioning;
 
+use crate::common::Arch;
 use crate::common::contract::ProviderError;
 use crate::providers::scrape::{parse_date, sel, text_of};
 
 pub type Url = crate::common::contract::Url<super::ApkPure>;
-
-/// Direct-download host: `{DL_URL}/b/{APK|XAPK}/{pkg}?versionCode={c}` 302s to the file.
-pub const DL_URL: &str = "https://d.apkpure.com";
 
 /// APKPure sometimes formats a version as `2.6.2(20653)`
 fn clean_version(v: &str) -> String {
@@ -61,10 +59,49 @@ pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>, ProviderError> {
 	Ok(hits)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+	APK,
+	XAPK,
+}
+
+pub struct Variant {
+	pub url: Url,
+	pub version: String,
+	pub arch: Arch,
+	kind: Kind,
+}
+
+pub fn parse_variants(html: &Html, arch: Arch) -> Result<Variant, ProviderError> {
+	let variants = sel("div#version-list .show-more .show-more-content");
+	let var = html
+		.select(&variants)
+		.next()
+		.ok_or_else(|| ProviderError::ParseError("No 'All Variants' element".into()))?;
+
+	let group_title = sel("div.group-title");
+	let apk = sel(".apk");
+	let dl_btn = sel("a.download-btn");
+	let version = sel("div.info div.info-top span");
+	var.select(&group_title)
+		.zip(var.select(&apk))
+		.filter_map(|(title, apk)| {
+			let href = apk.select(&dl_btn).next()?.attr("href")?;
+			Some(Variant {
+				url: href.into(),
+				version: text_of(apk.select(&version).next()?),
+				arch: text_of(title).parse().ok()?,
+				kind: if href.contains("/b/APK") { Kind::APK } else { Kind::XAPK },
+			})
+		})
+		.filter(|v| v.arch.contains(arch))
+		// `min_by_key` so first element would be returned on equal.
+		.min_by_key(|v| v.kind != Kind::APK)
+		.ok_or_else(|| ProviderError::no_match(format!("no matching variant"), arch))
+}
+
 pub struct VersionRow {
 	pub version: String,
-	/// Version code for download.
-	pub code: String,
 	pub uploaded: NaiveDate,
 }
 
@@ -77,18 +114,13 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 		.select(&row)
 		.filter_map(|el| {
 			let version = clean_version(el.value().attr("data-dt-version")?);
-			let code = el.value().attr("data-dt-versioncode")?.trim().to_string();
-			if version.is_empty() || code.is_empty() || !seen.insert(version.clone()) {
+			if version.is_empty() || !seen.insert(version.clone()) {
 				return None;
 			}
 			// `Apr 10, 2025`
 			let date = el.select(&date).next().map(text_of).unwrap_or_default();
 			let uploaded = parse_date("apkpure", &version, &date, "%b %d, %Y")?;
-			Some(VersionRow {
-				version,
-				code,
-				uploaded,
-			})
+			Some(VersionRow { version, uploaded })
 		})
 		.collect();
 	if rows.is_empty() {
@@ -96,24 +128,4 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 	}
 	rows.sort_by(|a, b| Versioning::new(&b.version).cmp(&Versioning::new(&a.version)));
 	Ok(rows)
-}
-
-/// The latest version string from an app page main download button, else first
-/// `data-dt-version`. `None` if the page has no such marker.
-pub fn latest_version(html: &Html) -> Option<String> {
-	let main = sel(".dt-main-download-btn[data-dt-version]");
-	let any = sel("[data-dt-version]");
-	html.select(&main)
-		.chain(html.select(&any))
-		.find_map(|el| el.value().attr("data-dt-version"))
-		.map(clean_version)
-		.filter(|s| !s.is_empty())
-}
-
-/// `{DL_URL}/b/APK/{pkg}?versionCode={code}`, or `?version=latest` when `code` is `None`.
-pub fn download_url(pkg: &str, code: Option<&str>) -> String {
-	match code {
-		Some(code) => format!("{DL_URL}/b/APK/{pkg}?versionCode={code}"),
-		None => format!("{DL_URL}/b/APK/{pkg}?version=latest"),
-	}
 }
