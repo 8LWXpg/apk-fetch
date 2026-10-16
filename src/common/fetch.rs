@@ -106,7 +106,7 @@ fn starts_with_zip_magic(path: &Path) -> bool {
 	};
 	let mut head = [0u8; 4];
 	match f.read_exact(&mut head) {
-		Ok(_) => head == *b"PK\x03\x04" || head == *b"PK\x05\x06",
+		Ok(_) => head == *b"PK\x03\x04",
 		Err(_) => false,
 	}
 }

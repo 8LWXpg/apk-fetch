@@ -100,37 +100,31 @@ impl<C: ProviderConst> Url<C> {
 }
 
 bitflags::bitflags! {
-/// A split bundle carrying every ABI
+	/// A split bundle carrying every ABI
 	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 	pub struct Arch: u8 {
+		#[bitflags(flag_name="arm64-v8a")]
 		const ARM64_V8A = 1;
+		#[bitflags(flag_name="armeabi-v7a")]
 		const ARMEABI_V7A = 2;
+		#[bitflags(flag_name="x86")]
 		const X86 = 4;
+		#[bitflags(flag_name="x86_64")]
 		const X86_64 = 8;
 	}
 }
 
 impl Arch {
-	const NAMES: [(Arch, &'static str); 4] = [
-		(Arch::ARM64_V8A, "arm64-v8a"),
-		(Arch::ARMEABI_V7A, "armeabi-v7a"),
-		(Arch::X86, "x86"),
-		(Arch::X86_64, "x86_64"),
-	];
-
 	/// One ABI label; Apkmirror says `universal` (variants table) or `noarch` (app page).
 	fn single(tok: &str) -> Option<Arch> {
 		let t = tok.to_ascii_lowercase();
-		Arch::NAMES
-			.iter()
-			.find_map(|(bit, n)| (*n == t).then_some(*bit))
-			.or_else(|| matches!(t.as_str(), "universal" | "noarch").then(Arch::all))
+		Arch::from_name(&t).or_else(|| matches!(t.as_str(), "universal" | "noarch").then(Arch::all))
 	}
 }
 
-/// Parse from `,`/`+`-separated list
 impl std::str::FromStr for Arch {
 	type Err = String;
+	/// Parse from `,`/`+`-separated list
 	fn from_str(s: &str) -> Result<Self, String> {
 		let set: Arch = s
 			.split([',', '+'])
@@ -151,15 +145,11 @@ impl std::fmt::Display for Arch {
 		if *self == Arch::all() {
 			return f.write_str("universal");
 		}
-		let mut first = true;
-		for (bit, name) in Arch::NAMES {
-			if self.contains(bit) {
-				if !first {
-					f.write_str("+")?;
-				}
-				f.write_str(name)?;
-				first = false;
+		for (i, (name, _)) in self.iter_names().enumerate() {
+			if i > 0 {
+				f.write_str("+")?;
 			}
+			f.write_str(name)?;
 		}
 		Ok(())
 	}
