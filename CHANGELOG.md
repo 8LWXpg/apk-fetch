@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+- APKPure: new parsing flow that properly handle arch and apk/xapk with less page hit.
+
 ## 1.1.0
 
 - Rename `--output` to `--out-dir`.
