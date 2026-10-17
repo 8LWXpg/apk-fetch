@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
-use scraper::Html;
+use scraper::CaseSensitivity::CaseSensitive;
+use scraper::{ElementRef, Html};
 use versions::Versioning;
 
 use crate::common::Arch;
@@ -72,32 +73,37 @@ pub struct Variant {
 	kind: Kind,
 }
 
-pub fn parse_variants(html: &Html, arch: Arch) -> Result<Variant, ProviderError> {
+pub fn parse_variants(html: &Html, arch_want: Arch) -> Result<Variant, ProviderError> {
 	let variants = sel("div#version-list .show-more .show-more-content");
 	let var = html
 		.select(&variants)
 		.next()
 		.ok_or_else(|| ProviderError::ParseError("No 'All Variants' element".into()))?;
 
-	let group_title = sel("div.group-title");
-	let apk = sel(".apk");
 	let dl_btn = sel("a.download-btn");
 	let version = sel("div.info div.info-top span");
-	var.select(&group_title)
-		.zip(var.select(&apk))
-		.filter_map(|(title, apk)| {
-			let href = apk.select(&dl_btn).next()?.attr("href")?;
+	let mut arch: Option<Arch> = None;
+	var.children()
+		.filter_map(ElementRef::wrap)
+		.filter_map(|el| {
+			if el.value().has_class("group-title", CaseSensitive) {
+				arch = text_of(el).parse().ok();
+				return None;
+			}
+			if !el.value().has_class("apk", CaseSensitive) {
+				return None;
+			}
+			let href = el.select(&dl_btn).next()?.attr("href")?;
 			Some(Variant {
 				url: href.into(),
-				version: text_of(apk.select(&version).next()?),
-				arch: text_of(title).parse().ok()?,
+				version: text_of(el.select(&version).next()?),
+				arch: arch.take()?,
 				kind: if href.contains("/b/APK") { Kind::APK } else { Kind::XAPK },
 			})
 		})
-		.filter(|v| v.arch.contains(arch))
-		// `min_by_key` so first element would be returned on equal.
+		.filter(|v| v.arch.contains(arch_want))
 		.min_by_key(|v| v.kind != Kind::APK)
-		.ok_or_else(|| ProviderError::no_match(format!("no matching variant"), arch))
+		.ok_or_else(|| ProviderError::no_match("no matching variant", arch_want))
 }
 
 pub struct VersionRow {

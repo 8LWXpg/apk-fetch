@@ -50,16 +50,9 @@ pub struct Variant {
 
 /// Pick a variant for `arch`. Plain APKs first, then bundles.
 pub fn choose_variant(variants: &[Variant], arch: Arch) -> Option<&Variant> {
-	let tightest = |ok: &dyn Fn(&&Variant) -> bool| {
-		variants
-			.iter()
-			.filter(|v| ok(v) && v.arch.contains(arch))
-			.min_by_key(|v| v.arch.bits().count_ones())
-	};
-	tightest(&|v| !v.bundle)
-		.or_else(|| variants.iter().find(|v| !v.bundle))
-		.or_else(|| tightest(&|_| true))
-		.or_else(|| variants.first())
+	variants
+		.iter()
+		.min_by_key(|v| (v.bundle, !v.arch.contains(arch), v.arch.bits().count_ones()))
 }
 
 /// Best-effort: last whitespace token that looks like a version number.

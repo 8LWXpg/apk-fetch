@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2
+
+- APKPure: fixed when there's multiple download for same app in same arch.
+
 ## 1.2.1
 
 - Added `--no-progress` option.
