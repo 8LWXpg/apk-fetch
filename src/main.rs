@@ -8,12 +8,12 @@ use clap::Parser;
 
 use crate::cli::{Cli, dispatch};
 use crate::common::fetch::install_ctrlc;
-use crate::common::ui::{error, set_json};
+use crate::common::ui::{error, global_set};
 
 fn main() -> ExitCode {
 	install_ctrlc();
 	let cli = Cli::parse();
-	set_json(cli.json);
+	global_set(cli.json, cli.no_progress);
 
 	match dispatch(cli) {
 		Ok(()) => ExitCode::SUCCESS,

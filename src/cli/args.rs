@@ -16,9 +16,13 @@ use crate::common::{Arch, ProviderId};
 	arg_required_else_help = true
 )]
 pub struct Cli {
-	/// Machine-readable JSON output.
+	/// JSON output.
 	#[arg(long, global = true)]
 	pub json: bool,
+
+	/// Suppress curl progress
+	#[arg(long, global = true)]
+	pub no_progress: bool,
 
 	#[command(subcommand)]
 	pub command: Command,

@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use std::{fs, thread};
 
 use crate::common::contract::ProviderError;
+use crate::common::ui::no_progress;
 
 pub const REQUEST_TIMEOUT_SECS: u64 = 30;
 pub const CONNECT_TIMEOUT_SECS: u64 = 20;
@@ -199,7 +200,7 @@ impl HttpFetcher {
 
 	fn base_cmd(url: &str, headers: &[(String, String)], progress: bool) -> Command {
 		let mut cmd = Command::new(&*CURL);
-		cmd.arg(if progress { "-S" } else { "-sS" });
+		cmd.arg(if !no_progress() && progress { "-S" } else { "-sS" });
 		cmd.args([
 			"-L",
 			"--compressed",
