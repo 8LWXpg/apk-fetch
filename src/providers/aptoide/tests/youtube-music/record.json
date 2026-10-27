@@ -1,0 +1,105 @@
+{
+  "hits": [
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.google.android.music",
+      "title": "Google Play Music"
+    },
+    {
+      "package": "com.Project100Pi.themusicplayer",
+      "title": "Pi Music Player"
+    },
+    {
+      "package": "com.chebdev.dubstepdrumpadsguru",
+      "title": "Dubstep Drum Pads Guru"
+    },
+    {
+      "package": "com.google.android.youtube.tvmusic",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "xyz.alexander.youtubemusicdownloader",
+      "title": "Youtube Music Downloader"
+    },
+    {
+      "package": "com.sovathana.moosic_app",
+      "title": "Moosic - Youtube music player"
+    },
+    {
+      "package": "com.chebdev.trapdrumpadsguru",
+      "title": "Trap Drum Pads Guru"
+    },
+    {
+      "package": "com.google.android.youtube",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music.pwa",
+      "title": "YouTube Music for Chromebook"
+    },
+    {
+      "package": "com.globetech.utubevidoedownloaderforyoutube",
+      "title": "YouTube Music Stream & Download"
+    },
+    {
+      "package": "com.chebdev.hiphopdrumpadsguru",
+      "title": "Hip-Hop Drum Pads Guru"
+    },
+    {
+      "package": "acs.vider.app",
+      "title": "Vider: Youtube music player"
+    },
+    {
+      "package": "canh.com.musistream",
+      "title": "Free Music: Unlimited for YouTube Stream Player"
+    },
+    {
+      "package": "com.omsoft.aoneplaytube.youtubeaudioplayer",
+      "title": "A1-PlayTube | YouTube Music Player & Downloader"
+    },
+    {
+      "package": "com.chebdev.drumpadsguru",
+      "title": "Drum Pads Guru"
+    },
+    {
+      "package": "the.playi.descargar.musica",
+      "title": "Download Youtube Music - Free - ThePlayi"
+    },
+    {
+      "package": "com.yy.adam.music",
+      "title": "YMusic: Best design free YouTube music player"
+    },
+    {
+      "package": "com.kapp.youtube.final",
+      "title": "YMusic - Listen youtube in background"
+    },
+    {
+      "package": "com.chikh.mamido",
+      "title": "رنات الهاتف اغاني الراي"
+    }
+  ],
+  "versions": [
+    {
+      "version": "9.40.51",
+      "uploaded": "2026-10-05"
+    },
+    {
+      "version": "9.37.54",
+      "uploaded": "2026-09-17"
+    },
+    {
+      "version": "8.29.52",
+      "uploaded": "2026-10-10"
+    }
+  ],
+  "target": {
+    "url": "https://pool.apk.aptoide.com/market2019arabic/com-google-android-apps-youtube-music-94051240-76974663-a1838a3d7a704210ee655808402bba82.apk",
+    "version": "9.40.51",
+    "arch": "arm64-v8a",
+    "provider": "aptoide",
+    "headers": []
+  }
+}

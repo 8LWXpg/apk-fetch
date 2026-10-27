@@ -167,7 +167,7 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionInfo>, ProviderError> {
 				.next()
 				.and_then(|d| d.attr("data-utcdate"))
 				.unwrap_or("");
-			let uploaded = parse_date("apkmirror", &version, date, "%m/%d/%Y %H:%M UTC")?;
+			let uploaded = parse_date(date, "%m/%d/%Y %H:%M UTC")?;
 			Some(VersionInfo { version, uploaded })
 		})
 		.collect();

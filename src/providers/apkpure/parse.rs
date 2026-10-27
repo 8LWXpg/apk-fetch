@@ -4,7 +4,7 @@ use scraper::{ElementRef, Html};
 use versions::Versioning;
 
 use crate::common::Arch;
-use crate::common::contract::ProviderError;
+use crate::common::contract::{AppResult, ProviderError};
 use crate::providers::scrape::{parse_date, sel, text_of};
 
 pub type Url = crate::common::contract::Url<super::ApkPure>;
@@ -25,14 +25,9 @@ fn package_from_href(href: &str) -> Option<String> {
 	ok.then(|| seg.to_string())
 }
 
-pub struct SearchHit {
-	pub package: String,
-	pub title: String,
-}
-
 /// Parse `/search?q=...`. Covers both result shapes: the top "brand" match
 /// (`div.sa-apps-div`) and the `a.dd` list rows.
-pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>, ProviderError> {
+pub fn parse_search(html: &Html) -> Result<Vec<AppResult>, ProviderError> {
 	let anchor = sel("a[href*=\"apkpure.com/\"]");
 	let p1 = sel("p.p1");
 
@@ -52,7 +47,7 @@ pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>, ProviderError> {
 		if title.is_empty() || !seen.insert(package.clone()) {
 			continue;
 		}
-		hits.push(SearchHit { package, title });
+		hits.push(AppResult { package, title });
 	}
 	if hits.is_empty() {
 		return Err(ProviderError::NoMatch("search returned nothing".into()));
@@ -125,7 +120,7 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 			}
 			// `Apr 10, 2025`
 			let date = el.select(&date).next().map(text_of).unwrap_or_default();
-			let uploaded = parse_date("apkpure", &version, &date, "%b %d, %Y")?;
+			let uploaded = parse_date(&date, "%b %d, %Y")?;
 			Some(VersionRow { version, uploaded })
 		})
 		.collect();

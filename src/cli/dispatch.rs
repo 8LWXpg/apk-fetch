@@ -4,7 +4,7 @@ use crate::cli::args::{Cli, Command, ProvidersCmd};
 use crate::cli::commands;
 use crate::cli::exit::AppError;
 use crate::common::{Provider, ProviderId, ProviderRegistry};
-use crate::providers::{ApkCombo, ApkMirror, ApkPure};
+use crate::providers::{ApkCombo, ApkMirror, ApkPure, Aptoide};
 
 pub fn dispatch(cli: Cli) -> Result<(), AppError> {
 	let registry = build_registry(&cli.command);
@@ -52,6 +52,7 @@ fn build_registry(cmd: &Command) -> ProviderRegistry {
 			match id {
 				ProviderId::Apkcombo => Box::new(ApkCombo::default()),
 				ProviderId::Apkpure => Box::new(ApkPure::default()),
+				ProviderId::Aptoide => Box::new(Aptoide::default()),
 				ProviderId::Apkmirror => Box::new(ApkMirror::default()),
 			}
 		})

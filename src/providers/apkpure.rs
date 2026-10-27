@@ -53,17 +53,11 @@ impl Provider for ApkPure {
 	}
 
 	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
-		Ok(parse::parse_search(&Html::parse_document(
+		parse::parse_search(&Html::parse_document(
 			&self
 				.fetcher
 				.get_text(Url::from(format!("/search?q={}", query(q))).as_str())?,
-		))?
-		.into_iter()
-		.map(|h| AppResult {
-			package: h.package,
-			title: h.title,
-		})
-		.collect())
+		))
 	}
 
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {

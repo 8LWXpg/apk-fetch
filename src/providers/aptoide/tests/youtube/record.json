@@ -1,0 +1,105 @@
+{
+  "hits": [
+    {
+      "package": "com.google.android.youtube",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.rahul.videoderbeta",
+      "title": "Youtube Video Downloader - Videoder"
+    },
+    {
+      "package": "com.serhathacioglu.videodownloaderyoutube",
+      "title": "Youtube Downloader"
+    },
+    {
+      "package": "com.tranquilapps.ogyoutube",
+      "title": "Y2mate YouTube Videos Downloader"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.google.android.apps.youtube.creator",
+      "title": "YouTube Studio"
+    },
+    {
+      "package": "com.vanced.android.youtube",
+      "title": "YouTube Vanced"
+    },
+    {
+      "package": "com.hecorat.videocast",
+      "title": "EZ Web Video Cast | Chromecast"
+    },
+    {
+      "package": "com.google.android.apps.youtube.mango",
+      "title": "YouTube Go"
+    },
+    {
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
+    },
+    {
+      "package": "com.alexddstore.alexander.youtubedownload",
+      "title": "Youtube Download"
+    },
+    {
+      "package": "com.svprdga.usbwebcamera",
+      "title": "USB/Web Camera"
+    },
+    {
+      "package": "com.app.Downloader.youtubedownloader",
+      "title": "Youtube Downloader"
+    },
+    {
+      "package": "com.armanych.youtube",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.google.android.youtube.googletv",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.onecode.livestream.iptv",
+      "title": "Livestream TV - M3U Stream Player IPTV"
+    },
+    {
+      "package": "com.youtube.armanych",
+      "title": "YouTube"
+    },
+    {
+      "package": "dreamland.browser.youtube",
+      "title": "YouTube Browser"
+    },
+    {
+      "package": "com.alexddstore.alexander.lxyoutube",
+      "title": "Youtube Video Downloader - LXYoutube"
+    },
+    {
+      "package": "studio.scillarium.ottnavigator",
+      "title": "OTT Navigator IPTV"
+    }
+  ],
+  "versions": [
+    {
+      "version": "21.42.243",
+      "uploaded": "2026-10-18"
+    },
+    {
+      "version": "21.41.525",
+      "uploaded": "2026-10-11"
+    },
+    {
+      "version": "21.39.522-SECONDARY",
+      "uploaded": "2026-09-28"
+    }
+  ],
+  "target": {
+    "url": "https://pool.apk.aptoide.com/bjwawesome/com-google-android-youtube-1561304941-77159460-80b8257791e266770ef089e4710bfb77.apk",
+    "version": "21.42.243",
+    "arch": "universal",
+    "provider": "aptoide",
+    "headers": []
+  }
+}

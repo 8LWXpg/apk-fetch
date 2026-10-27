@@ -3,7 +3,6 @@
 //!   -> final = `{BASE}{r2_href}&{checkin}&package_name={pkg}&lang=en` -> 302 -> CDN
 mod parse;
 use parse::{Url, VersionRow};
-
 use scraper::Html;
 
 use crate::common::contract::{

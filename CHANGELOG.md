@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0
+
+- Added `aptoide` provider.
+
 ## 1.2.2
 
 - APKPure: fixed when there's multiple download for same app in same arch.

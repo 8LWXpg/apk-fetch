@@ -86,7 +86,7 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 			// `Sep 4, 2026 · Android 10+`
 			let desc = a.select(&desc).next().map(text_of).unwrap_or_default();
 			let date = desc.split('·').next().unwrap_or("");
-			let uploaded = parse_date("apkcombo", &version, date, "%b %d, %Y")?;
+			let uploaded = parse_date(date, "%b %d, %Y")?;
 			Some(VersionRow {
 				version,
 				uploaded,

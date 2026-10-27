@@ -89,7 +89,7 @@ apk-fetch get com.google.android.youtube --out-dir ~/Downloads
 - `--version <V>` — exact version to fetch.
 - `--provider <name>` — try only this provider.
 - `--priority <a,b>` — ordered list of providers to try until one resolves.
-- `--arch <abi>` — `arm64-v8a` (default), `armeabi-v7a`, `x86`, `x86_64`, or `universal`; falls back to a universal build when the exact ABI is unavailable.
+- `--arch <abi>` — `arm64-v8a` (default), `armeabi-v7a`, `x86`, `x86_64`, or `universal`; falls back to multi-arch build when the exact ABI is unavailable.
 - `--out-dir <dir>` — save directory (default: `.`).
 
 ### `providers`
@@ -100,4 +100,4 @@ apk-fetch providers check   # reachability of every mirror
 ```
 
 When no provider is given, `get` tries in the built-in priority order:
-APKCombo, APKPure, APKMirror.
+APKCombo, APKPure, Aptoide, APKMirror.

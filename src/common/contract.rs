@@ -10,19 +10,20 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderId {
 	Apkcombo,
 	Apkpure,
+	Aptoide,
 	Apkmirror,
 }
 
 impl ProviderId {
-	pub const DEFAULT_PRIORITY: &'static [ProviderId] =
-		&[ProviderId::Apkcombo, ProviderId::Apkpure, ProviderId::Apkmirror];
+	pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
+		ProviderId::Apkcombo,
+		ProviderId::Apkpure,
+		ProviderId::Aptoide,
+		ProviderId::Apkmirror,
+	];
 
-	pub const fn as_str(&self) -> &'static str {
-		match self {
-			ProviderId::Apkcombo => "apkcombo",
-			ProviderId::Apkpure => "apkpure",
-			ProviderId::Apkmirror => "apkmirror",
-		}
+	pub fn as_str(&self) -> &'static str {
+		serde_variant::to_variant_name(self).unwrap()
 	}
 }
 
