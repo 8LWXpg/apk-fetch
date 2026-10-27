@@ -5,6 +5,7 @@ use form_urlencoded::byte_serialize;
 use scraper::Selector;
 
 use crate::common::contract::Arch;
+use crate::common::{ProviderError, Result};
 
 /// Parses a CSS selector.
 ///
@@ -27,11 +28,8 @@ pub fn query(q: &str) -> String {
 	byte_serialize(q.trim().as_bytes()).collect()
 }
 
-/// Upload date off a listing row. A row that fails to parse is reported and
-/// dropped by the caller, so a site format change shows up instead of silently
-/// emptying the list.
-pub fn parse_date(s: &str, fmt: &str) -> Option<NaiveDate> {
-	NaiveDate::parse_from_str(s.trim(), fmt).ok()
+pub fn parse_date(s: &str, fmt: &str) -> Result<NaiveDate> {
+	NaiveDate::parse_from_str(s.trim(), fmt).map_err(|e| ProviderError::ParseError(e.to_string()))
 }
 
 /// One downloadable build off a version page.

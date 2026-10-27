@@ -6,7 +6,7 @@ use parse::Url;
 use scraper::Html;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, Result, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape;
@@ -19,7 +19,7 @@ pub struct ApkMirror {
 }
 
 impl ApkMirror {
-	fn base_search(&self, arg: &str, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+	fn base_search(&self, arg: &str, q: &str) -> Result<Vec<parse::SearchHit>> {
 		let url: Url = format!(
 			"/?post_type=app_release&{arg}&sortby=date&sort=desc&s={}",
 			scrape::query(q)
@@ -28,15 +28,15 @@ impl ApkMirror {
 		parse::parse_search(&Html::parse_document(&self.fetcher.get_text(url.as_str())?), q)
 	}
 
-	fn apk_search(&self, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+	fn apk_search(&self, q: &str) -> Result<Vec<parse::SearchHit>> {
 		self.base_search("searchtype=apk", q)
 	}
 
-	fn app_search(&self, q: &str) -> Result<Vec<parse::SearchHit>, ProviderError> {
+	fn app_search(&self, q: &str) -> Result<Vec<parse::SearchHit>> {
 		self.base_search("searchtype=app", q)
 	}
 
-	fn latest_release(&self, pkg: &str) -> Result<parse::SearchHit, ProviderError> {
+	fn latest_release(&self, pkg: &str) -> Result<parse::SearchHit> {
 		let hits = self
 			.app_search(pkg)?
 			.into_iter()
@@ -58,7 +58,7 @@ impl Provider for ApkMirror {
 		Self::ID
 	}
 
-	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+	fn search(&self, q: &str) -> Result<Vec<AppResult>> {
 		// One row per release: keep the first (best-ranked, newest) of each app.
 		Ok(self
 			.app_search(q)?
@@ -76,7 +76,7 @@ impl Provider for ApkMirror {
 			.collect())
 	}
 
-	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>> {
 		let hit = self.latest_release(pkg)?;
 		let slug = parse::app_slug(&hit.release_url)
 			.ok_or_else(|| ProviderError::parse_error("bad release url", &hit.release_url))?;
@@ -85,7 +85,7 @@ impl Provider for ApkMirror {
 		))
 	}
 
-	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget> {
 		// 1. Locate the version page.
 		let version_page = match version {
 			None => self.latest_release(pkg)?.release_url,

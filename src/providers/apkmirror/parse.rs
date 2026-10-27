@@ -3,7 +3,8 @@ use std::sync::LazyLock;
 use scraper::{ElementRef, Html, Selector};
 use versions::Versioning;
 
-use crate::common::contract::{Arch, ProviderError, VersionInfo};
+use crate::common::contract::{Arch, ProviderError, Result, VersionInfo};
+use crate::common::ui::error;
 use crate::providers::scrape::{Variant, parse_date, sel, text_of, version_token};
 
 pub type Url = crate::common::contract::Url<super::ApkMirror>;
@@ -28,7 +29,7 @@ impl SearchHit {
 	}
 }
 
-fn parse_row(row: ElementRef) -> Result<SearchHit, ProviderError> {
+fn parse_row(row: ElementRef) -> Result<SearchHit> {
 	let a = row
 		.select(&TITLE_LINK)
 		.next()
@@ -52,7 +53,7 @@ fn parse_row(row: ElementRef) -> Result<SearchHit, ProviderError> {
 ///
 /// # Returns
 /// Nonzero length `Vec`
-pub fn parse_search(html: &Html, query: &str) -> Result<Vec<SearchHit>, ProviderError> {
+pub fn parse_search(html: &Html, query: &str) -> Result<Vec<SearchHit>> {
 	// Select search result div.
 	let results = html.select(&sel(".listWidget")).next().unwrap();
 	if let Some(e) = results.select(&sel(".addPadding p")).next()
@@ -66,7 +67,7 @@ pub fn parse_search(html: &Html, query: &str) -> Result<Vec<SearchHit>, Provider
 }
 
 /// Get Package ID from `<img>`. Package ID is somehow used in app icon URL.
-fn package_id(img: ElementRef) -> Result<String, ProviderError> {
+fn package_id(img: ElementRef) -> Result<String> {
 	let src = img
 		.attr("src")
 		.ok_or_else(|| ProviderError::parse_error("no src", img.html()))?;
@@ -136,7 +137,7 @@ pub fn app_slug(release_url: &Url) -> Option<&str> {
 }
 
 /// Get latest version from "All versions" widget on app page.
-pub fn latest_version(html: &Html) -> Result<SearchHit, ProviderError> {
+pub fn latest_version(html: &Html) -> Result<SearchHit> {
 	let widget = html
 		.select(&VERSIONS_WIDGET)
 		.next()
@@ -147,7 +148,7 @@ pub fn latest_version(html: &Html) -> Result<SearchHit, ProviderError> {
 }
 
 /// Parse the "All versions" widget on app page.
-pub fn parse_versions(html: &Html) -> Result<Vec<VersionInfo>, ProviderError> {
+pub fn parse_versions(html: &Html) -> Result<Vec<VersionInfo>> {
 	let widget = html
 		.select(&VERSIONS_WIDGET)
 		.next()
@@ -167,7 +168,9 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionInfo>, ProviderError> {
 				.next()
 				.and_then(|d| d.attr("data-utcdate"))
 				.unwrap_or("");
-			let uploaded = parse_date(date, "%m/%d/%Y %H:%M UTC")?;
+			let uploaded = parse_date(date, "%m/%d/%Y %H:%M UTC")
+				.inspect_err(|e| error!("failed to parse date {date}: {e}"))
+				.ok()?;
 			Some(VersionInfo { version, uploaded })
 		})
 		.collect();
@@ -228,7 +231,7 @@ pub fn parse_variants(html: &Html) -> Vec<Variant> {
 }
 
 /// Download page -> the keyed `a.downloadButton` href (absolute).
-pub fn parse_download_button(html: &Html) -> Result<Url, ProviderError> {
+pub fn parse_download_button(html: &Html) -> Result<Url> {
 	html.select(&sel("a.downloadButton"))
 		.find_map(|a| a.attr("href"))
 		.map(Into::into)
@@ -236,7 +239,7 @@ pub fn parse_download_button(html: &Html) -> Result<Url, ProviderError> {
 }
 
 /// "Your download is starting..." page -> the actual AAPK URL (absolute).
-pub fn parse_final_link(html: &Html) -> Result<Url, ProviderError> {
+pub fn parse_final_link(html: &Html) -> Result<Url> {
 	html.select(&sel("a#download-link"))
 		.chain(html.select(&sel("div.card-with-tabs a[href]")))
 		.find_map(|a| a.attr("href"))

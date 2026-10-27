@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
-use crate::common::contract::ProviderError;
+use crate::common::contract::{ProviderError, Result};
 use crate::common::ui::no_progress;
 
 pub const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -67,7 +67,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
 	/// Fresh, empty dir next to `dest`.
-	fn new(dest: &Path) -> Result<Self, ProviderError> {
+	fn new(dest: &Path) -> Result<Self> {
 		let name = dest.file_name().unwrap_or_default().to_string_lossy();
 		let dir = dest.with_file_name(format!(".{name}.part"));
 		let _ = fs::remove_dir_all(&dir);
@@ -80,7 +80,7 @@ impl Scratch {
 	}
 
 	/// The single file curl wrote.
-	fn only_file(&self) -> Result<PathBuf, ProviderError> {
+	fn only_file(&self) -> Result<PathBuf> {
 		let mut entries = fs::read_dir(&self.0)?;
 		let first = entries
 			.next()
@@ -218,12 +218,12 @@ impl HttpFetcher {
 		cmd
 	}
 
-	pub fn get_text(&self, url: &str) -> Result<String, ProviderError> {
+	pub fn get_text(&self, url: &str) -> Result<String> {
 		self.request(url, &[], &[])
 	}
 
 	/// POST `url` with a `multipart/form-data` body (curl `-F`).
-	pub fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<String, ProviderError> {
+	pub fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<String> {
 		let mut extra: Vec<String> = vec!["-X".into(), "POST".into()];
 		for (k, v) in form {
 			extra.push("-F".into());
@@ -233,7 +233,7 @@ impl HttpFetcher {
 		self.request(url, &[], &extra_ref)
 	}
 
-	fn request(&self, url: &str, headers: &[(String, String)], extra_args: &[&str]) -> Result<String, ProviderError> {
+	fn request(&self, url: &str, headers: &[(String, String)], extra_args: &[&str]) -> Result<String> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
 			return Ok(Self::play_body(dir, name, url));
@@ -293,7 +293,7 @@ impl HttpFetcher {
 	}
 
 	/// Resolve URL redirection. Return unchanged means no redirection.
-	pub fn resolve_url(&self, url: &str) -> Result<String, ProviderError> {
+	pub fn resolve_url(&self, url: &str) -> Result<String> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
 			return Ok(Self::play_body(dir, name, url));
@@ -342,12 +342,7 @@ impl HttpFetcher {
 	/// leaves no file.
 	///
 	/// `dest`: Path without ext.
-	pub fn download_to_file(
-		&self,
-		url: &str,
-		headers: &[(String, String)],
-		dest: &Path,
-	) -> Result<PathBuf, ProviderError> {
+	pub fn download_to_file(&self, url: &str, headers: &[(String, String)], dest: &Path) -> Result<PathBuf> {
 		self.throttle();
 		let result = Self::curl_to_file(url, headers, dest);
 		if result.is_err() {
@@ -359,7 +354,7 @@ impl HttpFetcher {
 	/// Same as `download_to_file`, minus the failure cleanup.
 	///
 	/// `dest`: Path without ext
-	fn curl_to_file(url: &str, headers: &[(String, String)], dest: &Path) -> Result<PathBuf, ProviderError> {
+	fn curl_to_file(url: &str, headers: &[(String, String)], dest: &Path) -> Result<PathBuf> {
 		let scratch = Scratch::new(dest)?; // fresh dir beside dest, Drop = remove_dir_all
 		let status = Self::base_cmd(url, headers, true)
 			.args([

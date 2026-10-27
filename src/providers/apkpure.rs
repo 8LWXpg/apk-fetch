@@ -7,7 +7,7 @@ use parse::{Url, Variant};
 use scraper::Html;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderId, Result, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::query;
@@ -18,7 +18,7 @@ pub struct ApkPure {
 }
 
 impl ApkPure {
-	fn version_rows(&self, pkg: &str) -> Result<Vec<parse::VersionRow>, ProviderError> {
+	fn version_rows(&self, pkg: &str) -> Result<Vec<parse::VersionRow>> {
 		parse::parse_versions(&Html::parse_document(
 			&self
 				.fetcher
@@ -26,7 +26,7 @@ impl ApkPure {
 		))
 	}
 
-	fn get_variants(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<Variant, ProviderError> {
+	fn get_variants(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<Variant> {
 		parse::parse_variants(
 			&Html::parse_document(
 				&self.fetcher.get_text(
@@ -52,7 +52,7 @@ impl Provider for ApkPure {
 		Self::ID
 	}
 
-	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+	fn search(&self, q: &str) -> Result<Vec<AppResult>> {
 		parse::parse_search(&Html::parse_document(
 			&self
 				.fetcher
@@ -60,7 +60,7 @@ impl Provider for ApkPure {
 		))
 	}
 
-	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>> {
 		Ok(self
 			.version_rows(pkg)?
 			.into_iter()
@@ -71,7 +71,7 @@ impl Provider for ApkPure {
 			.collect())
 	}
 
-	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget> {
 		// `code` is APKPure `versionCode`, `None` means "latest".
 		let variant = self.get_variants(pkg, version, arch)?;
 

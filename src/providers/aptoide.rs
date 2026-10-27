@@ -10,7 +10,7 @@ mod parse;
 use parse::Url;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, Result, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{query, version_matches};
@@ -21,7 +21,7 @@ pub struct Aptoide {
 }
 
 impl Aptoide {
-	fn version_list(&self, pkg: &str) -> Result<Vec<parse::App>, ProviderError> {
+	fn version_list(&self, pkg: &str) -> Result<Vec<parse::App>> {
 		parse::parse_versions(
 			&self
 				.fetcher
@@ -40,7 +40,7 @@ impl Provider for Aptoide {
 		Self::ID
 	}
 
-	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+	fn search(&self, q: &str) -> Result<Vec<AppResult>> {
 		parse::parse_search(
 			&self
 				.fetcher
@@ -48,7 +48,7 @@ impl Provider for Aptoide {
 		)
 	}
 
-	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>> {
 		Ok(self
 			.version_list(pkg)?
 			.into_iter()
@@ -58,10 +58,10 @@ impl Provider for Aptoide {
 					version: a.file.vername,
 				})
 			})
-			.collect::<Result<Vec<_>, ProviderError>>()?)
+			.collect::<Result<Vec<_>>>()?)
 	}
 
-	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget> {
 		// Newest first; take the first build that runs on `arch`.
 		let mut cands = self.version_list(pkg)?;
 		if let Some(want) = version {

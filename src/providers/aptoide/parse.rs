@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::common::contract::{AppResult, Arch, ProviderError};
+use crate::common::contract::{AppResult, Arch, ProviderError, Result};
 use crate::common::ui::error;
 use crate::providers::scrape::parse_date;
 
@@ -90,18 +90,17 @@ impl App {
 		if arch.is_empty() { Arch::all() } else { arch }
 	}
 
-	pub fn uploaded(&self) -> Result<NaiveDate, ProviderError> {
+	pub fn uploaded(&self) -> Result<NaiveDate> {
 		parse_date(&self.file.added, "%Y-%m-%d %H:%M:%S")
-			.ok_or_else(|| ProviderError::parse_error("bad json field file.added", &self.file.added))
 	}
 }
 
-fn json<T: DeserializeOwned>(body: &str) -> Result<T, ProviderError> {
+fn json<T: DeserializeOwned>(body: &str) -> Result<T> {
 	serde_json::from_str(body).map_err(|e| ProviderError::parse_error("aptoide json", e))
 }
 
 /// `apps/search`: one hit per package (the site lists one per uploader store).
-pub fn parse_search(body: &str) -> Result<Vec<AppResult>, ProviderError> {
+pub fn parse_search(body: &str) -> Result<Vec<AppResult>> {
 	let r: SearchResp = json(body)?;
 	let hits: Vec<AppResult> = r
 		.datalist
@@ -121,7 +120,7 @@ pub fn parse_search(body: &str) -> Result<Vec<AppResult>, ProviderError> {
 
 /// `listAppVersions`, newest first. At equal versions the build with the fewest ABIs first
 /// (mirrors `choose_variant`). The same version from several stores stays: distinct candidates.
-pub fn parse_versions(body: &str) -> Result<Vec<App>, ProviderError> {
+pub fn parse_versions(body: &str) -> Result<Vec<App>> {
 	let r: VersionsResp = json(body)?;
 	let apps = r.list;
 	if apps.is_empty() {

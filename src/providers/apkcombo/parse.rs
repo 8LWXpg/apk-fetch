@@ -4,7 +4,8 @@ use chrono::NaiveDate;
 use scraper::{Html, Selector};
 use versions::Versioning;
 
-use crate::common::contract::{Arch, ProviderError};
+use crate::common::contract::{Arch, ProviderError, Result};
+use crate::common::ui::error;
 use crate::providers::scrape::{Variant, parse_date, sel, text_of, version_token};
 
 pub type Url = crate::common::contract::Url<super::ApkCombo>;
@@ -35,7 +36,7 @@ pub fn slug_from_canonical_url(url: &Url, pkg: &str) -> Option<String> {
 	}
 }
 
-pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>, ProviderError> {
+pub fn parse_search(html: &Html) -> Result<Vec<SearchHit>> {
 	let link = sel("a.l_item");
 	let mut seen = std::collections::HashSet::new();
 	let hits: Vec<SearchHit> = html
@@ -71,7 +72,7 @@ pub struct VersionRow {
 }
 
 /// Sorted by version.
-pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
+pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>> {
 	let row = sel("ul.list-versions li a.ver-item");
 	let desc = sel(".description");
 	let mut rows: Vec<VersionRow> = html
@@ -86,7 +87,9 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 			// `Sep 4, 2026 · Android 10+`
 			let desc = a.select(&desc).next().map(text_of).unwrap_or_default();
 			let date = desc.split('·').next().unwrap_or("");
-			let uploaded = parse_date(date, "%b %d, %Y")?;
+			let uploaded = parse_date(date, "%b %d, %Y")
+				.inspect_err(|e| error!("failed to parse date {desc}: {e}"))
+				.ok()?;
 			Some(VersionRow {
 				version,
 				uploaded,
@@ -113,7 +116,7 @@ pub fn extract_xid(html: &str) -> String {
 
 /// [`Variant::url`] is the `/r2?u=<encoded signed URL>` link (absolute).
 /// The caller parses the fragment with [`Html::parse_fragment`].
-pub fn parse_variants(html: &Html) -> Result<Vec<Variant>, ProviderError> {
+pub fn parse_variants(html: &Html) -> Result<Vec<Variant>> {
 	// The recommended pick lives in `#best-variant-tab`; the rest in
 	// `#variants-tab`. Both are `.content-tab` with the same row shape.
 	let group = sel(".content-tab .tree > ul > li");

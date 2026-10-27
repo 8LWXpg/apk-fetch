@@ -247,6 +247,8 @@ impl ProviderError {
 	}
 }
 
+pub type Result<T, E = ProviderError> = core::result::Result<T, E>;
+
 /// `{pkg}-{version}-{arch}`, sanitized for a filesystem.
 pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
 	format!("{pkg}-{version}-{arch}")
@@ -264,14 +266,14 @@ pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
 pub trait Provider {
 	fn id(&self) -> ProviderId;
 	/// User facing search. Should not used by `download_url`.
-	fn search(&self, query: &str) -> Result<Vec<AppResult>, ProviderError>;
+	fn search(&self, query: &str) -> Result<Vec<AppResult>>;
 	/// List available versions.
-	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError>;
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>>;
 	/// Resolve a download.
-	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError>;
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget>;
 	/// Used for `providers check`. Default: a canned search.
 	/// Override if a provider has a cheaper health endpoint.
-	fn check(&self) -> Result<(), ProviderError> {
+	fn check(&self) -> Result<()> {
 		self.search("firefox").map(|_| ())
 	}
 }

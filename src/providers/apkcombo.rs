@@ -6,7 +6,7 @@ use parse::{Url, VersionRow};
 use scraper::Html;
 
 use crate::common::contract::{
-	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, VersionInfo,
+	AppResult, Arch, DownloadTarget, Provider, ProviderConst, ProviderError, ProviderId, Result, VersionInfo,
 };
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{choose_variant, query, version_matches};
@@ -18,7 +18,7 @@ pub struct ApkCombo {
 
 impl ApkCombo {
 	/// `/en/{pkg}/` 301 to the `/{slug}/{pkg}/`.
-	fn slug_for(&self, pkg: &str) -> Result<String, ProviderError> {
+	fn slug_for(&self, pkg: &str) -> Result<String> {
 		let final_url: Url = self
 			.fetcher
 			.resolve_url(parse::app_url(parse::LOOKUP_LOCALE, pkg, "").as_str())?
@@ -27,7 +27,7 @@ impl ApkCombo {
 			.ok_or_else(|| ProviderError::no_match(format!("no app page for {pkg}"), &final_url))
 	}
 
-	fn version_rows(&self, slug: &str, pkg: &str) -> Result<Vec<VersionRow>, ProviderError> {
+	fn version_rows(&self, slug: &str, pkg: &str) -> Result<Vec<VersionRow>> {
 		parse::parse_versions(&Html::parse_document(
 			&self
 				.fetcher
@@ -46,7 +46,7 @@ impl Provider for ApkCombo {
 		Self::ID
 	}
 
-	fn search(&self, q: &str) -> Result<Vec<AppResult>, ProviderError> {
+	fn search(&self, q: &str) -> Result<Vec<AppResult>> {
 		Ok(parse::parse_search(&Html::parse_document(
 			&self
 				.fetcher
@@ -60,7 +60,7 @@ impl Provider for ApkCombo {
 		.collect())
 	}
 
-	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>, ProviderError> {
+	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>> {
 		let slug = self.slug_for(pkg)?;
 		Ok(self
 			.version_rows(&slug, pkg)?
@@ -72,7 +72,7 @@ impl Provider for ApkCombo {
 			.collect())
 	}
 
-	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget, ProviderError> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget> {
 		let slug = self.slug_for(pkg)?;
 
 		// Locate the download page (carries the `xid` build tag).

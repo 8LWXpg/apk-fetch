@@ -4,7 +4,8 @@ use scraper::{ElementRef, Html};
 use versions::Versioning;
 
 use crate::common::Arch;
-use crate::common::contract::{AppResult, ProviderError};
+use crate::common::contract::{AppResult, ProviderError, Result};
+use crate::common::ui::error;
 use crate::providers::scrape::{parse_date, sel, text_of};
 
 pub type Url = crate::common::contract::Url<super::ApkPure>;
@@ -27,7 +28,7 @@ fn package_from_href(href: &str) -> Option<String> {
 
 /// Parse `/search?q=...`. Covers both result shapes: the top "brand" match
 /// (`div.sa-apps-div`) and the `a.dd` list rows.
-pub fn parse_search(html: &Html) -> Result<Vec<AppResult>, ProviderError> {
+pub fn parse_search(html: &Html) -> Result<Vec<AppResult>> {
 	let anchor = sel("a[href*=\"apkpure.com/\"]");
 	let p1 = sel("p.p1");
 
@@ -68,7 +69,7 @@ pub struct Variant {
 	kind: Kind,
 }
 
-pub fn parse_variants(html: &Html, arch_want: Arch) -> Result<Variant, ProviderError> {
+pub fn parse_variants(html: &Html, arch_want: Arch) -> Result<Variant> {
 	let variants = sel("div#version-list .show-more .show-more-content");
 	let var = html
 		.select(&variants)
@@ -107,7 +108,7 @@ pub struct VersionRow {
 }
 
 /// Parse `/x/<pkg>/versions` — rows carry everything in `data-dt-*` attributes.
-pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
+pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>> {
 	let row = sel("div.ver_download_link[data-dt-version][data-dt-versioncode]");
 	let date = sel("span.update-on");
 	let mut seen = std::collections::HashSet::new();
@@ -120,7 +121,9 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>, ProviderError> {
 			}
 			// `Apr 10, 2025`
 			let date = el.select(&date).next().map(text_of).unwrap_or_default();
-			let uploaded = parse_date(&date, "%b %d, %Y")?;
+			let uploaded = parse_date(&date, "%b %d, %Y")
+				.inspect_err(|e| error!("failed to parse date {date}: {e}"))
+				.ok()?;
 			Some(VersionRow { version, uploaded })
 		})
 		.collect();
