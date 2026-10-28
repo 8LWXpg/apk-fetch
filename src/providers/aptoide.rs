@@ -23,16 +23,19 @@ pub struct Aptoide {
 impl Aptoide {
 	fn version_list(&self, pkg: &str) -> Result<Vec<parse::App>> {
 		parse::parse_versions(
-			&self
-				.fetcher
-				.get_text(Url::from(format!("listAppVersions?package_name={pkg}")).as_str())?,
+			&self.fetcher.get_text(
+				Url::from(format!(
+					"listAppVersions?package_name={pkg}&limit=50&store_name=aptoide-web&cdn=web&aab=1&origin=SITE&store_id=15"
+				))
+				.as_str(),
+			)?,
 		)
 	}
 }
 
 impl ProviderConst for Aptoide {
 	const ID: ProviderId = ProviderId::Aptoide;
-	const BASE_URL: &'static str = "https://ws75.aptoide.com/api/7";
+	const BASE_URL: &'static str = "https://ws2-cache.aptoide.com/api/7";
 }
 
 impl Provider for Aptoide {
@@ -50,9 +53,13 @@ impl Provider for Aptoide {
 
 	fn search(&self, q: &str) -> Result<Vec<AppResult>> {
 		parse::parse_search(
-			&self
-				.fetcher
-				.get_text(Url::from(format!("apps/search?query={}&limit=20", query(q))).as_str())?,
+			&self.fetcher.get_text(
+				Url::from(format!(
+					"apps/search?query={}&limit=20&store_name=aptoide-web&cdn=web&aab=1&origin=SITE",
+					query(q)
+				))
+				.as_str(),
+			)?,
 		)
 	}
 

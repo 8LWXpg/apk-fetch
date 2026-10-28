@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Aptoide: fixed api parameter to match website.
+
 ## 1.3.0
 
 - Added `aptoide` provider.
