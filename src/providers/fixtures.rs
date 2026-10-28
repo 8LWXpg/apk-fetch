@@ -86,7 +86,7 @@ pub fn assert_record(dir: &Path, fixture: &FixtureRecord, app: &str) {
 /// Recapture one provider's `tests/<app>/` — `*.html` pages *and* the `record.json`.
 ///
 /// Run it with `--nocapture` and read the printed diffs.
-pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName, build: impl Fn(HttpFetcher) -> P) {
+pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName) {
 	for (app, pkg) in APPS {
 		let dir = root(P::ID.as_str()).join(app);
 		let record_path = dir.join("record.json");
@@ -94,8 +94,7 @@ pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName, 
 			.ok()
 			.and_then(|s| serde_json::from_str(&s).ok())
 			.unwrap_or(Value::Null);
-
-		let p = build(HttpFetcher::recording(dir.clone(), fixture_name));
+		let p = P::with_fetcher(HttpFetcher::recording(dir.clone(), fixture_name));
 		let record = run_flow(&p, app, pkg);
 		let new = serde_json::to_value(&record).unwrap();
 		fs::write(&record_path, serde_json::to_string_pretty(&new).unwrap()).unwrap();

@@ -4,6 +4,9 @@ use std::marker::PhantomData;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use crate::common::HttpFetcher;
+
 /// The known providers.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -264,6 +267,10 @@ pub fn download_filename(pkg: &str, version: &str, arch: Arch) -> String {
 }
 
 pub trait Provider {
+	#[cfg(test)]
+	fn with_fetcher(fetcher: HttpFetcher) -> Self
+	where
+		Self: Sized;
 	fn id(&self) -> ProviderId;
 	/// User facing search. Should not used by `download_url`.
 	fn search(&self, query: &str) -> Result<Vec<AppResult>>;

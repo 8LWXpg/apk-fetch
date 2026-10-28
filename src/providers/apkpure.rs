@@ -48,6 +48,14 @@ impl ProviderConst for ApkPure {
 }
 
 impl Provider for ApkPure {
+	#[cfg(test)]
+	fn with_fetcher(fetcher: HttpFetcher) -> Self
+	where
+		Self: Sized,
+	{
+		Self { fetcher }
+	}
+
 	fn id(&self) -> ProviderId {
 		Self::ID
 	}
@@ -106,7 +114,7 @@ mod refresh {
 	#[test]
 	#[ignore = "network"]
 	fn refresh_fixtures() {
-		fixtures::refresh_fixtures(fixture_name, |f| ApkPure { fetcher: f });
+		fixtures::refresh_fixtures::<ApkPure>(fixture_name);
 	}
 }
 

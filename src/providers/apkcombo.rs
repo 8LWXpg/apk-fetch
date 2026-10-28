@@ -42,6 +42,14 @@ impl ProviderConst for ApkCombo {
 }
 
 impl Provider for ApkCombo {
+	#[cfg(test)]
+	fn with_fetcher(fetcher: HttpFetcher) -> Self
+	where
+		Self: Sized,
+	{
+		Self { fetcher }
+	}
+
 	fn id(&self) -> ProviderId {
 		Self::ID
 	}
@@ -142,7 +150,7 @@ mod refresh {
 	#[test]
 	#[ignore = "network"]
 	fn refresh_fixtures() {
-		fixtures::refresh_fixtures(fixture_name, |f| ApkCombo { fetcher: f });
+		fixtures::refresh_fixtures::<ApkCombo>(fixture_name);
 	}
 }
 

@@ -36,6 +36,14 @@ impl ProviderConst for Aptoide {
 }
 
 impl Provider for Aptoide {
+	#[cfg(test)]
+	fn with_fetcher(fetcher: HttpFetcher) -> Self
+	where
+		Self: Sized,
+	{
+		Self { fetcher }
+	}
+
 	fn id(&self) -> ProviderId {
 		Self::ID
 	}
@@ -102,7 +110,7 @@ mod refresh {
 	#[test]
 	#[ignore = "network"]
 	fn refresh_fixtures() {
-		fixtures::refresh_fixtures(fixture_name, |f| Aptoide { fetcher: f });
+		fixtures::refresh_fixtures::<Aptoide>(fixture_name);
 	}
 }
 
