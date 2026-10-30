@@ -62,22 +62,25 @@ enum Kind {
 	XAPK,
 }
 
+// pub field is needed
 pub struct Variant {
 	pub url: Url,
 	pub version: String,
+	android: u8,
 	pub arch: Arch,
 	kind: Kind,
 }
 
 pub fn parse_variants(html: &Html, arch_want: Arch) -> Result<Variant> {
-	let variants = sel("div#version-list .show-more .show-more-content");
+	let variants = sel("div#version-list div.show-more div.show-more-content");
 	let var = html
 		.select(&variants)
 		.next()
-		.ok_or_else(|| ProviderError::ParseError("No 'All Variants' element".into()))?;
+		.ok_or_else(|| ProviderError::ParseError("no 'All Variants' element".into()))?;
 
 	let dl_btn = sel("a.download-btn");
 	let version = sel("div.info div.info-top span");
+	let sdk = sel("span.sdk");
 	let mut arch: Option<Arch> = None;
 	var.children()
 		.filter_map(ElementRef::wrap)
@@ -90,15 +93,25 @@ pub fn parse_variants(html: &Html, arch_want: Arch) -> Result<Variant> {
 				return None;
 			}
 			let href = el.select(&dl_btn).next()?.attr("href")?;
+			// Text like `Android 11.0+`
+			let android = text_of(el.select(&sdk).next()?)
+				.split_once(' ')?
+				.1
+				.split_once('.')?
+				.0
+				.parse()
+				.ok()?;
 			Some(Variant {
-				url: href.into(),
+				arch: arch?,
 				version: text_of(el.select(&version).next()?),
-				arch: arch.take()?,
+				url: href.into(),
+				android,
 				kind: if href.contains("/b/APK") { Kind::APK } else { Kind::XAPK },
 			})
 		})
 		.filter(|v| v.arch.contains(arch_want))
-		.min_by_key(|v| v.kind != Kind::APK)
+		// Return last element on tie for larger version code.
+		.max_by_key(|v| (v.android, v.kind == Kind::APK))
 		.ok_or_else(|| ProviderError::no_match("no matching variant", arch_want))
 }
 

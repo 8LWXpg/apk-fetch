@@ -1,8 +1,12 @@
 # Changelog
 
+## 1.3.2
+
+- APKPure: prefer higher Android version requirement and version code under same arch.
+
 ## 1.3.1
 
-- Aptoide: fixed api parameter to match website.
+- Aptoide: fixed API parameter to match website.
 
 ## 1.3.0
 

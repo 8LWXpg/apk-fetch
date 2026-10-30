@@ -500,7 +500,7 @@ mod curl {
 		assert!(body.contains("https://example.test/x"), "{body}");
 	}
 
-	/// non-APK body -> error, and no file or scratch dir left behind.
+	/// Non-APK body -> error, and no file or scratch dir left behind.
 	#[test]
 	#[ignore = "network"]
 	fn curl_download_rejects_non_apk_and_cleans_up() {
@@ -544,7 +544,7 @@ mod tests {
 	#[test]
 	fn no_newlines_in_args() {
 		let cmd = HttpFetcher::base_cmd("https://x/?a=b&c=d", &[("Referer".into(), "https://y".into())], false);
-		// batch-file spawning rejects \r and \n in any arg
+		// batch-file spawning rejects '\r' and '\n' in any argument
 		assert!(cmd.get_args().all(|a| !a.to_string_lossy().contains(['\r', '\n'])));
 	}
 }
