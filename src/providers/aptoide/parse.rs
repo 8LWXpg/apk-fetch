@@ -118,8 +118,7 @@ pub fn parse_search(body: &str) -> Result<Vec<AppResult>> {
 	Ok(hits)
 }
 
-/// `listAppVersions`, newest first. At equal versions the build with the fewest ABIs first
-/// (mirrors `choose_variant`). The same version from several stores stays: distinct candidates.
+/// `listAppVersions`, returned value is version sorted.
 pub fn parse_versions(body: &str) -> Result<Vec<App>> {
 	let r: VersionsResp = json(body)?;
 	let apps = r.list;
