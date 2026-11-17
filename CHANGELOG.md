@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3
+
+- Remove already dead APKCombo provider.
+
 ## 1.3.2
 
 - APKPure: prefer higher Android version requirement and version code under same arch.

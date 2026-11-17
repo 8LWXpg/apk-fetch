@@ -11,19 +11,14 @@ use crate::common::HttpFetcher;
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
-	Apkcombo,
 	Apkpure,
 	Aptoide,
 	Apkmirror,
 }
 
 impl ProviderId {
-	pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
-		ProviderId::Apkcombo,
-		ProviderId::Apkpure,
-		ProviderId::Aptoide,
-		ProviderId::Apkmirror,
-	];
+	pub const DEFAULT_PRIORITY: &'static [ProviderId] =
+		&[ProviderId::Apkpure, ProviderId::Aptoide, ProviderId::Apkmirror];
 
 	pub fn as_str(&self) -> &'static str {
 		serde_variant::to_variant_name(self).unwrap()

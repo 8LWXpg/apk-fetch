@@ -223,6 +223,7 @@ impl HttpFetcher {
 	}
 
 	/// POST `url` with a `multipart/form-data` body (curl `-F`).
+	#[allow(dead_code)]
 	pub fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<String> {
 		let mut extra: Vec<String> = vec!["-X".into(), "POST".into()];
 		for (k, v) in form {
@@ -293,6 +294,7 @@ impl HttpFetcher {
 	}
 
 	/// Resolve URL redirection. Return unchanged means no redirection.
+	#[allow(dead_code)]
 	pub fn resolve_url(&self, url: &str) -> Result<String> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
