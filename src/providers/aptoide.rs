@@ -100,9 +100,9 @@ impl Provider for Aptoide {
 #[cfg(test)]
 fn fixture_name(url: &str) -> Option<&'static str> {
 	Some(if url.contains("/apps/search?") {
-		"search"
+		"search.json"
 	} else if url.contains("/listAppVersions?") {
-		"versions"
+		"versions.json"
 	} else {
 		return None;
 	})
@@ -132,9 +132,7 @@ mod tests {
 	fn resolves_from_fixtures() {
 		for (app, pkg) in APPS {
 			let dir = root("aptoide").join(app);
-			let p = Aptoide {
-				fetcher: HttpFetcher::playback(dir.clone(), fixture_name),
-			};
+			let p = Aptoide::with_fetcher(HttpFetcher::playback(dir.clone(), fixture_name));
 
 			let record = run_flow(&p, app, pkg);
 			assert_record(&dir, &record, app);

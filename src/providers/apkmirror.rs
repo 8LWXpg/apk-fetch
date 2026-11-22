@@ -148,18 +148,18 @@ fn fixture_name(url: &str) -> Option<&'static str> {
 	Some(if url.contains("post_type=app_release") {
 		// `s=` last parameter: package ids contain a dot, names don't
 		if url.split("&s=").nth(1).is_some_and(|q| q.contains('.')) {
-			"search-pkg"
+			"search-pkg.html"
 		} else {
-			"search"
+			"search.html"
 		}
 	} else if url.contains("/download/?key=") {
-		"download-starting"
+		"download-starting.html"
 	} else if url.ends_with("-android-apk-download/") {
-		"download-page"
+		"download-page.html"
 	} else if url.ends_with("-release/") {
-		"version"
+		"version.html"
 	} else {
-		"app"
+		"app.html"
 	})
 }
 
@@ -187,9 +187,7 @@ mod tests {
 	fn resolves_from_fixtures() {
 		for (app, pkg) in APPS {
 			let dir = root("apkmirror").join(app);
-			let p = ApkMirror {
-				fetcher: HttpFetcher::playback(dir.clone(), fixture_name),
-			};
+			let p = ApkMirror::with_fetcher(HttpFetcher::playback(dir.clone(), fixture_name));
 
 			let record = run_flow(&p, app, pkg);
 			assert_record(&dir, &record, app);

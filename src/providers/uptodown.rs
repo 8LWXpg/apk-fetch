@@ -242,23 +242,23 @@ impl Provider for Uptodown {
 fn fixture_name(url: &str) -> Option<&'static str> {
 	let page = |n: usize| url.contains(&format!("page[offset]={}&", n * PAGE_SIZE));
 	Some(if url.contains("/v2/apps/search/") {
-		"search"
+		"search.json"
 	} else if url.contains("/compatible/versions") {
 		if page(0) {
-			"versions-1"
+			"versions-1.json"
 		} else if page(1) {
-			"versions-2"
+			"versions-2.json"
 		} else {
 			return None;
 		}
 	} else if url.contains("/downloadUrl") {
-		"download"
+		"download.json"
 	} else if url.contains("/byPackagename/") {
-		"lookup"
+		"lookup.json"
 	} else if url.contains("/tracker/device") {
-		"register"
+		"register.json"
 	} else if url.contains("/auth/token") {
-		"auth"
+		"auth.json"
 	} else {
 		return None;
 	})

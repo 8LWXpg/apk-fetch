@@ -17,7 +17,7 @@ use serde_json::Value;
 use versions::Versioning;
 
 use crate::common::contract::{AppResult, Arch, DownloadTarget, Provider, ProviderConst, VersionInfo};
-use crate::common::fetch::{FixtureName, HttpFetcher};
+use crate::common::fetch::{FixtureFile, HttpFetcher};
 
 /// `(dir name, package id)` captured by every provider's `refresh_fixtures`.
 pub const APPS: [(&str, &str); 2] = [
@@ -86,7 +86,7 @@ pub fn assert_record(dir: &Path, fixture: &FixtureRecord, app: &str) {
 /// Recapture one provider's `tests/<app>/` — `*.html` pages *and* the `record.json`.
 ///
 /// Run it with `--nocapture` and read the printed diffs.
-pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureName) {
+pub fn refresh_fixtures<P: Provider + ProviderConst>(fixture_name: FixtureFile) {
 	for (app, pkg) in APPS {
 		let dir = root(P::ID.as_str()).join(app);
 		let record_path = dir.join("record.json");

@@ -130,7 +130,7 @@ fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 
 /// Maps a fetched URL to its fixture file stem, or `None` to skip it.
 #[cfg(test)]
-pub type FixtureName = fn(&str) -> Option<&'static str>;
+pub type FixtureFile = fn(&str) -> Option<&'static str>;
 
 /// A curl-backed fetcher with a per-instance throttle. Construct one per provider so each site gets
 /// its own request cadence.
@@ -139,10 +139,10 @@ pub struct HttpFetcher {
 	last_request: Cell<Option<Instant>>,
 	/// Fixture recorder: every 2xx body lands in `dir/<name(url)>.html`.
 	#[cfg(test)]
-	record: Option<(PathBuf, FixtureName)>,
+	record: Option<(PathBuf, FixtureFile)>,
 	/// Fixture player: serves `dir/<name(url)>.html` instead of the network.
 	#[cfg(test)]
-	play: Option<(PathBuf, FixtureName)>,
+	play: Option<(PathBuf, FixtureFile)>,
 }
 
 impl HttpFetcher {
@@ -164,7 +164,7 @@ impl HttpFetcher {
 	/// A fetcher that also saves what it fetches, so fixtures are captured via
 	/// the provider's own URL building instead of a second copy of it.
 	#[cfg(test)]
-	pub fn recording(dir: PathBuf, name: FixtureName) -> Self {
+	pub fn recording(dir: PathBuf, name: FixtureFile) -> Self {
 		Self {
 			record: Some((dir, name)),
 			..Self::new()
@@ -174,7 +174,7 @@ impl HttpFetcher {
 	/// [`recording`]'s counterpart: replays the saved fixtures, so provider
 	/// flows run offline against fixed pages.
 	#[cfg(test)]
-	pub fn playback(dir: PathBuf, name: FixtureName) -> Self {
+	pub fn playback(dir: PathBuf, name: FixtureFile) -> Self {
 		Self {
 			play: Some((dir, name)),
 			..Self::with_delay(Duration::ZERO)
@@ -183,7 +183,7 @@ impl HttpFetcher {
 
 	/// Read `dir/<name(url)>.html`, mapping the URL exactly as recording did.
 	#[cfg(test)]
-	fn play_body(dir: &Path, name: &FixtureName, url: &str) -> String {
+	fn play_body(dir: &Path, name: &FixtureFile, url: &str) -> String {
 		let name = name(url).unwrap_or_else(|| panic!("playback: no fixture mapping for {url}"));
 		let file = dir.join(format!("{name}.html"));
 		fs::read_to_string(&file).unwrap_or_else(|e| panic!("playback: {}: {e}", file.display()))
@@ -301,7 +301,15 @@ impl HttpFetcher {
 				&& let Some(name) = name(url)
 			{
 				fs::create_dir_all(dir).unwrap();
-				fs::write(dir.join(format!("{name}.html")), trim_html(body)).unwrap();
+				fs::write(
+					dir.join(name),
+					if name.ends_with(".html") {
+						trim_html(body)
+					} else {
+						body.to_string()
+					},
+				)
+				.unwrap();
 			}
 			return Ok(body.to_string());
 		}

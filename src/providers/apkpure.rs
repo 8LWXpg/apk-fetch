@@ -97,11 +97,11 @@ impl Provider for ApkPure {
 #[cfg(test)]
 fn fixture_name(url: &str) -> Option<&'static str> {
 	Some(if url.contains("/search?q=") {
-		"search"
+		"search.html"
 	} else if url.ends_with("/versions") {
-		"versions"
+		"versions.html"
 	} else {
-		"app"
+		"app.html"
 	})
 }
 
@@ -129,9 +129,7 @@ mod tests {
 	fn resolves_from_fixtures() {
 		for (app, pkg) in APPS {
 			let dir = root("apkpure").join(app);
-			let p = ApkPure {
-				fetcher: HttpFetcher::playback(dir.clone(), fixture_name),
-			};
+			let p = ApkPure::with_fetcher(HttpFetcher::playback(dir.clone(), fixture_name));
 
 			let record = run_flow(&p, app, pkg);
 			assert_record(&dir, &record, app);
