@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0
+
+- Added `uptodown` provider.
+
 ## 1.3.3
 
 - Remove already dead APKCombo provider.
