@@ -12,16 +12,16 @@ use crate::common::HttpFetcher;
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
 	Apkpure,
-	Aptoide,
 	Uptodown,
+	Aptoide,
 	Apkmirror,
 }
 
 impl ProviderId {
 	pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
 		ProviderId::Apkpure,
-		ProviderId::Aptoide,
 		ProviderId::Uptodown,
+		ProviderId::Aptoide,
 		ProviderId::Apkmirror,
 	];
 
