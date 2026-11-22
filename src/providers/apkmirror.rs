@@ -116,7 +116,7 @@ impl Provider for ApkMirror {
 			// Single-build app: the site lists no ABI, so it's a universal APK.
 			(version.map(str::to_string), Arch::all(), version_doc)
 		} else {
-			let v = scrape::choose_variant(&variants, arch)
+			let v = parse::choose_variant(&variants, arch)
 				.ok_or_else(|| ProviderError::no_match(format!("no downloadable variant for {pkg}"), arch))?;
 			(
 				Some(v.version.clone()),

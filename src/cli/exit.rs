@@ -28,7 +28,7 @@ impl From<serde_json::Error> for AppError {
 pub fn provider_error_code(e: &ProviderError) -> u8 {
 	match e {
 		ProviderError::NotFound(_) | ProviderError::NoMatch(_) => EXIT_NOT_FOUND,
-		ProviderError::Blocked => EXIT_BLOCKED,
+		ProviderError::Blocked | ProviderError::Unauthorized => EXIT_BLOCKED,
 		ProviderError::Network(_) => EXIT_NETWORK,
 		ProviderError::Cancelled => EXIT_CANCELLED,
 		ProviderError::CurlSpawn(_) | ProviderError::IO(_) | ProviderError::ParseError(_) => EXIT_GENERIC,

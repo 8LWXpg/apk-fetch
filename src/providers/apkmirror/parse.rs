@@ -5,7 +5,7 @@ use versions::Versioning;
 
 use crate::common::contract::{Arch, ProviderError, Result, VersionInfo};
 use crate::common::ui::error;
-use crate::providers::scrape::{Variant, parse_date, sel, text_of, version_token};
+use crate::providers::scrape::{parse_date, sel, text_of, version_token};
 
 pub type Url = crate::common::contract::Url<super::ApkMirror>;
 
@@ -197,6 +197,24 @@ pub fn strip_version(title: &str) -> String {
 		.join(" ")
 }
 
+/// One downloadable build off a version page.
+#[derive(Debug)]
+pub struct Variant {
+	pub version: String,
+	pub arch: Arch,
+	/// Split bundle (XAPK / APKM) rather than a plain APK.
+	pub bundle: bool,
+	/// Next hop in the site's download flow (absolute).
+	pub url: String,
+}
+
+/// Pick a variant for `arch`. Plain APKs first, then bundles.
+pub fn choose_variant(variants: &[Variant], arch: Arch) -> Option<&Variant> {
+	variants
+		.iter()
+		.min_by_key(|v| (v.bundle, !v.arch.contains(arch), v.arch.bits().count_ones()))
+}
+
 /// Parse the `.variants-table` on a version page. Empty `Vec` if the table is absent.
 pub fn parse_variants(html: &Html) -> Vec<Variant> {
 	let row_sel = sel("div.variants-table div.table-row");
@@ -293,5 +311,32 @@ mod tests {
 		// token, not a substring, so `com.devhd.x` doesn't pick `-dev`
 		assert!(r("YouTube beta", "youtube-beta", "youtube beta") < r("YouTube", "youtube", "youtube beta"));
 		assert!(r("Feedly", "feedly", "com.devhd.feedly") < r("Feedly", "feedly-dev", "com.devhd.feedly"));
+	}
+
+	fn variant(bundle: bool, arch: Arch) -> Variant {
+		Variant {
+			version: "1.0".into(),
+			arch,
+			bundle,
+			url: "https://x/".into(),
+		}
+	}
+
+	#[test]
+	fn choose_variant_prefers_apk_then_exact_arch() {
+		let vs = vec![
+			variant(true, Arch::ARM64_V8A),
+			variant(false, Arch::ARMEABI_V7A),
+			variant(false, Arch::ARM64_V8A),
+			variant(false, Arch::all()),
+		];
+		assert_eq!(choose_variant(&vs, Arch::ARM64_V8A).unwrap().arch, Arch::ARM64_V8A);
+		assert_eq!(choose_variant(&vs, Arch::ARMEABI_V7A).unwrap().arch, Arch::ARMEABI_V7A);
+		let picked = choose_variant(&vs, Arch::X86).unwrap();
+		assert!(!picked.bundle);
+		assert_eq!(picked.arch, Arch::all());
+
+		let bundles = vec![variant(true, Arch::all()), variant(true, Arch::ARM64_V8A)];
+		assert_eq!(choose_variant(&bundles, Arch::ARM64_V8A).unwrap().arch, Arch::ARM64_V8A);
 	}
 }

@@ -4,7 +4,6 @@ use chrono::NaiveDate;
 use form_urlencoded::byte_serialize;
 use scraper::Selector;
 
-use crate::common::contract::Arch;
 use crate::common::{ProviderError, Result};
 
 /// Parses a CSS selector.
@@ -32,24 +31,6 @@ pub fn parse_date(s: &str, fmt: &str) -> Result<NaiveDate> {
 	NaiveDate::parse_from_str(s.trim(), fmt).map_err(|e| ProviderError::ParseError(e.to_string()))
 }
 
-/// One downloadable build off a version page.
-#[derive(Debug)]
-pub struct Variant {
-	pub version: String,
-	pub arch: Arch,
-	/// Split bundle (XAPK / APKM) rather than a plain APK.
-	pub bundle: bool,
-	/// Next hop in the site's download flow (absolute).
-	pub url: String,
-}
-
-/// Pick a variant for `arch`. Plain APKs first, then bundles.
-pub fn choose_variant(variants: &[Variant], arch: Arch) -> Option<&Variant> {
-	variants
-		.iter()
-		.min_by_key(|v| (v.bundle, !v.arch.contains(arch), v.arch.bits().count_ones()))
-}
-
 /// Best-effort: last whitespace token that looks like a version number.
 pub fn version_token(name: &str) -> String {
 	name.split_whitespace()
@@ -74,33 +55,6 @@ mod tests {
 		assert_eq!(version_token("Spotify 9.1.80.2221"), "9.1.80.2221");
 		assert_eq!(version_token("YouTube 21.36.45 (arm64-v8a)"), "21.36.45");
 		assert_eq!(version_token("nothing numeric"), "nothing numeric");
-	}
-
-	fn variant(bundle: bool, arch: Arch) -> Variant {
-		Variant {
-			version: "1.0".into(),
-			arch,
-			bundle,
-			url: "https://x/".into(),
-		}
-	}
-
-	#[test]
-	fn choose_variant_prefers_apk_then_exact_arch() {
-		let vs = vec![
-			variant(true, Arch::ARM64_V8A),
-			variant(false, Arch::ARMEABI_V7A),
-			variant(false, Arch::ARM64_V8A),
-			variant(false, Arch::all()),
-		];
-		assert_eq!(choose_variant(&vs, Arch::ARM64_V8A).unwrap().arch, Arch::ARM64_V8A);
-		assert_eq!(choose_variant(&vs, Arch::ARMEABI_V7A).unwrap().arch, Arch::ARMEABI_V7A);
-		let picked = choose_variant(&vs, Arch::X86).unwrap();
-		assert!(!picked.bundle);
-		assert_eq!(picked.arch, Arch::all());
-
-		let bundles = vec![variant(true, Arch::all()), variant(true, Arch::ARM64_V8A)];
-		assert_eq!(choose_variant(&bundles, Arch::ARM64_V8A).unwrap().arch, Arch::ARM64_V8A);
 	}
 
 	#[test]

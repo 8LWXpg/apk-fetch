@@ -13,12 +13,17 @@ use crate::common::HttpFetcher;
 pub enum ProviderId {
 	Apkpure,
 	Aptoide,
+	Uptodown,
 	Apkmirror,
 }
 
 impl ProviderId {
-	pub const DEFAULT_PRIORITY: &'static [ProviderId] =
-		&[ProviderId::Apkpure, ProviderId::Aptoide, ProviderId::Apkmirror];
+	pub const DEFAULT_PRIORITY: &'static [ProviderId] = &[
+		ProviderId::Apkpure,
+		ProviderId::Aptoide,
+		ProviderId::Uptodown,
+		ProviderId::Apkmirror,
+	];
 
 	pub fn as_str(&self) -> &'static str {
 		serde_variant::to_variant_name(self).unwrap()
@@ -197,6 +202,10 @@ pub enum ProviderError {
 
 	#[error("{0}")]
 	IO(#[from] io::Error),
+
+	/// The API rejected our token (401).
+	#[error("rejected credentials (401)")]
+	Unauthorized,
 
 	/// The site itself answered 404 or 410. The string says what was missing.
 	#[error("{0}")]

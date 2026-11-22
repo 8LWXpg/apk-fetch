@@ -120,6 +120,7 @@ fn curl_exit_is_transient(code: Option<i32>) -> bool {
 
 fn map_http_status(code: u16, url: &str) -> Option<ProviderError> {
 	match code {
+		401 => Some(ProviderError::Unauthorized),
 		404 | 410 => Some(ProviderError::NotFound(format!("got {code} for {url}"))),
 		403 | 429 => Some(ProviderError::Blocked),
 		s if s >= 500 => Some(ProviderError::network(format!("upstream returned {s}"))),
@@ -203,6 +204,7 @@ impl HttpFetcher {
 		cmd.arg(if !no_progress() && progress { "-S" } else { "-sS" });
 		cmd.args([
 			"-L",
+			"-g",
 			"--compressed",
 			"--connect-timeout",
 			&CONNECT_TIMEOUT_SECS.to_string(),
@@ -222,6 +224,19 @@ impl HttpFetcher {
 		self.request(url, &[], &[])
 	}
 
+	pub fn get(&self, url: &str, headers: &[(String, String)]) -> Result<String> {
+		self.request(url, headers, &[])
+	}
+
+	/// POST `application/x-www-form-urlencoded` (curl `--data-urlencode`).
+	pub fn post_urlencoded(&self, url: &str, headers: &[(String, String)], form: &[(&str, &str)]) -> Result<String> {
+		let extra: Vec<String> = form
+			.iter()
+			.flat_map(|(k, v)| ["--data-urlencode".to_string(), format!("{k}={v}")])
+			.collect();
+		self.request(url, headers, &extra)
+	}
+
 	/// POST `url` with a `multipart/form-data` body (curl `-F`).
 	#[allow(dead_code)]
 	pub fn post_form(&self, url: &str, form: &[(&str, &str)]) -> Result<String> {
@@ -230,11 +245,10 @@ impl HttpFetcher {
 			extra.push("-F".into());
 			extra.push(format!("{k}={v}"));
 		}
-		let extra_ref: Vec<&str> = extra.iter().map(String::as_str).collect();
-		self.request(url, &[], &extra_ref)
+		self.request(url, &[], &extra)
 	}
 
-	fn request(&self, url: &str, headers: &[(String, String)], extra_args: &[&str]) -> Result<String> {
+	fn request(&self, url: &str, headers: &[(String, String)], extra_args: &[String]) -> Result<String> {
 		#[cfg(test)]
 		if let Some((dir, name)) = &self.play {
 			return Ok(Self::play_body(dir, name, url));

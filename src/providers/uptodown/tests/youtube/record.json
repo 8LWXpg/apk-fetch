@@ -1,0 +1,329 @@
+{
+  "hits": [
+    {
+      "package": "com.google.android.youtube",
+      "title": "YouTube"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "droid.video.download.mastervideos",
+      "title": "Youtube Video Downloader"
+    },
+    {
+      "package": "com.google.android.youtube.tv",
+      "title": "YouTube for Android TV"
+    },
+    {
+      "package": "com.sassmoji.bubbledeck.emoji",
+      "title": "YouTube Service"
+    },
+    {
+      "package": "com.google.android.youtube.tvmusic",
+      "title": "YouTube Music (Android TV)"
+    },
+    {
+      "package": "com.google.android.youtube.tvkids",
+      "title": "YouTube Kids for Android TV"
+    },
+    {
+      "package": "com.asinosoft.vpn",
+      "title": "YouTube Accelerator"
+    },
+    {
+      "package": "com.karrar.kdown",
+      "title": "Youtube Video and Reels Downloader - VidGo"
+    },
+    {
+      "package": "com.google.android.apps.youtube.producer",
+      "title": "YouTube Create"
+    },
+    {
+      "package": "com.google.android.apps.youtube.unplugged",
+      "title": "YouTube TV"
+    },
+    {
+      "package": "com.google.android.apps.youtube.creator",
+      "title": "YouTube Studio"
+    },
+    {
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
+    },
+    {
+      "package": "com.jk.tools.booster.player",
+      "title": "YouTube Video & TikTok Downloader"
+    },
+    {
+      "package": "com.vanced.android.apps.youtube.music",
+      "title": "Vanced Music"
+    },
+    {
+      "package": "com.ewtn.truthandlife",
+      "title": "Jenna Marbles"
+    },
+    {
+      "package": "com.seopromax.twa",
+      "title": "YouTube SEO & Growth Tools"
+    },
+    {
+      "package": "app.rvx.android.youtube",
+      "title": "RVX"
+    },
+    {
+      "package": "io.kodular.mdsajibh480.Thumbnail_Downloader",
+      "title": "YouTube Thumbnail Downloader"
+    },
+    {
+      "package": "com.google.android.apps.automotive.youtube",
+      "title": "YouTube (Android Auto)"
+    },
+    {
+      "package": "com.google.android.youtube.googletv",
+      "title": "YouTube for Google TV"
+    },
+    {
+      "package": "com.ekm.youtubevr3dvideos",
+      "title": "Youtube VR 3D"
+    },
+    {
+      "package": "com.google.android.apps.youtube.gaming",
+      "title": "YouTube Gaming"
+    },
+    {
+      "package": "youtube.tag.generator",
+      "title": "Youtube Tag Generator"
+    },
+    {
+      "package": "com.app.assistiranimes",
+      "title": "AnimeTV"
+    },
+    {
+      "package": "video.mw",
+      "title": "Youtube & Movie Downloader"
+    },
+    {
+      "package": "com.google.android.ogyoutube",
+      "title": "OGYouTube"
+    },
+    {
+      "package": "io.makeroid.dey_sanjay2014.YouTube_Tumbnail",
+      "title": "YOUTUBE TAGS PRO.."
+    },
+    {
+      "package": "ma.wanam.youtubeadaway",
+      "title": "YouTube AdAway"
+    },
+    {
+      "package": "com.google.android.apps.youtube.mango",
+      "title": "YouTube Go"
+    }
+  ],
+  "versions": [
+    {
+      "version": "21.46.528",
+      "uploaded": "2026-11-20"
+    },
+    {
+      "version": "21.46.527",
+      "uploaded": "2026-11-21"
+    },
+    {
+      "version": "21.46.522",
+      "uploaded": "2026-11-20"
+    },
+    {
+      "version": "21.46.522-SECONDARY",
+      "uploaded": "2026-11-16"
+    },
+    {
+      "version": "21.45.90",
+      "uploaded": "2026-11-14"
+    },
+    {
+      "version": "21.45.88",
+      "uploaded": "2026-11-13"
+    },
+    {
+      "version": "21.45.83",
+      "uploaded": "2026-11-13"
+    },
+    {
+      "version": "21.45.82",
+      "uploaded": "2026-11-09"
+    },
+    {
+      "version": "21.44.534",
+      "uploaded": "2026-11-04"
+    },
+    {
+      "version": "21.44.528-SECONDARY",
+      "uploaded": "2026-11-04"
+    },
+    {
+      "version": "21.43.528",
+      "uploaded": "2026-11-02"
+    },
+    {
+      "version": "21.43.525",
+      "uploaded": "2026-11-05"
+    },
+    {
+      "version": "21.43.523",
+      "uploaded": "2026-10-28"
+    },
+    {
+      "version": "21.42.247",
+      "uploaded": "2026-10-28"
+    },
+    {
+      "version": "21.42.244",
+      "uploaded": "2026-10-24"
+    },
+    {
+      "version": "21.42.243",
+      "uploaded": "2026-10-18"
+    },
+    {
+      "version": "21.41.531",
+      "uploaded": "2026-10-21"
+    },
+    {
+      "version": "21.41.530",
+      "uploaded": "2026-10-19"
+    },
+    {
+      "version": "21.41.529",
+      "uploaded": "2026-10-16"
+    },
+    {
+      "version": "21.41.527",
+      "uploaded": "2026-10-30"
+    },
+    {
+      "version": "21.41.526",
+      "uploaded": "2026-10-16"
+    },
+    {
+      "version": "21.41.525-EXTENDED",
+      "uploaded": "2026-10-29"
+    },
+    {
+      "version": "21.39.528",
+      "uploaded": "2026-10-27"
+    },
+    {
+      "version": "21.39.524",
+      "uploaded": "2026-10-08"
+    },
+    {
+      "version": "21.39.523",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "21.39.522",
+      "uploaded": "2026-10-02"
+    },
+    {
+      "version": "21.39.522-SECONDARY",
+      "uploaded": "2026-10-04"
+    },
+    {
+      "version": "21.38.130",
+      "uploaded": "2026-09-24"
+    },
+    {
+      "version": "21.38.125",
+      "uploaded": "2026-09-29"
+    },
+    {
+      "version": "21.38.124",
+      "uploaded": "2026-09-24"
+    },
+    {
+      "version": "21.37.44",
+      "uploaded": "2026-09-24"
+    },
+    {
+      "version": "21.37.42-SECONDARY",
+      "uploaded": "2026-09-17"
+    },
+    {
+      "version": "21.36.47",
+      "uploaded": "2026-09-15"
+    },
+    {
+      "version": "21.35.448",
+      "uploaded": "2026-09-10"
+    },
+    {
+      "version": "21.35.446",
+      "uploaded": "2026-09-19"
+    },
+    {
+      "version": "21.35.443",
+      "uploaded": "2026-09-07"
+    },
+    {
+      "version": "21.35.442",
+      "uploaded": "2026-09-02"
+    },
+    {
+      "version": "21.34.248",
+      "uploaded": "2026-09-02"
+    },
+    {
+      "version": "21.34.247",
+      "uploaded": "2026-08-28"
+    },
+    {
+      "version": "21.34.245",
+      "uploaded": "2026-09-12"
+    },
+    {
+      "version": "21.34.244",
+      "uploaded": "2026-08-29"
+    },
+    {
+      "version": "21.34.243",
+      "uploaded": "2026-08-26"
+    },
+    {
+      "version": "21.34.243-SECONDARY",
+      "uploaded": "2026-08-23"
+    },
+    {
+      "version": "21.33.330",
+      "uploaded": "2026-08-28"
+    },
+    {
+      "version": "21.33.326",
+      "uploaded": "2026-08-22"
+    },
+    {
+      "version": "21.33.324",
+      "uploaded": "2026-08-20"
+    },
+    {
+      "version": "21.33.323",
+      "uploaded": "2026-09-05"
+    },
+    {
+      "version": "21.33.322-SECONDARY",
+      "uploaded": "2026-08-16"
+    },
+    {
+      "version": "21.32.9",
+      "uploaded": "2026-08-22"
+    }
+  ],
+  "target": {
+    "url": "https://dw.uptodown.com/dwn/ymOE5TDpdF27k3O8JnlMyAW08VNtdCCZoj9rdW6TXauWKzBCM__PNJ-T4TAXt5Wt27aLrbxtyB6Ql4ZfPen4x1Qnboh4KYG_Jbnec-vKsYRuGl9HvT5HdNbyr17k_TAE/h2TnEqdMOzH4xbWxGJYy1QfFglz-mWBcSBnCt6i3rBwGQ69aqjX60Na6wXouO3bZXtS1Q_OtlhIRBD7Cgm-0fYlVaohs00wKpcXwbd3DDFC_8N5Va1QAmqa0OTEh0m2Y/IKDjghr65NXxOHqkbm--y_ohg93gv2SYWv41IVwREx_WAuggERyor8NbMEmdeF2BBV2AiAYPGEK4refPH9qFAUPhBxPomRzYovKGTefLr_Ty0YtoXvFeBlyAXIfX6aQh/AI7YH_xphp5ftlyyc20etA==/",
+    "version": "21.46.528",
+    "arch": "universal",
+    "provider": "uptodown",
+    "headers": []
+  }
+}

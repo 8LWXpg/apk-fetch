@@ -1,0 +1,257 @@
+{
+  "hits": [
+    {
+      "package": "com.google.android.apps.youtube.music",
+      "title": "YouTube Music"
+    },
+    {
+      "package": "com.google.android.youtube.tvmusic",
+      "title": "YouTube Music (Android TV)"
+    },
+    {
+      "package": "com.google.android.apps.youtube.music.pwa",
+      "title": "YouTube Music for Chromebook"
+    },
+    {
+      "package": "com.kapp.youtube.final",
+      "title": "YMusic - YouTube music player & downloader"
+    },
+    {
+      "package": "mobi.charmer.mymovie",
+      "title": "MyMovie - Video Editor for Youtube, Music"
+    },
+    {
+      "package": "com.vanced.android.apps.youtube.music",
+      "title": "Vanced Music"
+    },
+    {
+      "package": "com.sovathana.moosic_app",
+      "title": "Moosic - Youtube music player"
+    },
+    {
+      "package": "com.haso.yourmusic",
+      "title": "YouRMusic - Youtube music and video downloader"
+    },
+    {
+      "package": "com.music.redtube",
+      "title": "RTube"
+    },
+    {
+      "package": "com.fotoable.free.music",
+      "title": "Free Music for YouTube Music - Music Player"
+    },
+    {
+      "package": "info.ziko8jp.jpopranking",
+      "title": "WPV-YouTube music PV"
+    },
+    {
+      "package": "com.yt3dl.music",
+      "title": "YT3 Music Downloader"
+    },
+    {
+      "package": "com.mp4avi",
+      "title": "YtbMate - Youtube Video & Music Downloader"
+    },
+    {
+      "package": "com.djit.apps.stream",
+      "title": "Stream: Free music for YouTube"
+    },
+    {
+      "package": "com.studio.mhunter.flutter",
+      "title": "Top Music YouTube - Flutter"
+    },
+    {
+      "package": "com.free.music",
+      "title": "Free Music for Youtube Player: Red"
+    },
+    {
+      "package": "love.life.work",
+      "title": "Airtube  | Music Player for Youtube"
+    },
+    {
+      "package": "com.pd.td",
+      "title": "MP3 Youtube Player (My Music Player)"
+    },
+    {
+      "package": "com.youtube.descargar.musica.ares.mp3.gratis.downloader.youtube",
+      "title": "Descargar Musica de YouTube"
+    },
+    {
+      "package": "com.simply.mp3.descargarmp3.music.paradise.download.free.muziek.baixar.mp3indir.gratis.music98172",
+      "title": "Mp3 Searcher"
+    },
+    {
+      "package": "com.youtube.muziek.descargar.musicas.songily.gratis.baxiar.mp3.blaster",
+      "title": "you2tube Descargar musica gratis Mp3"
+    },
+    {
+      "package": "com.whitemusic.player",
+      "title": "Gtunes - Music Downloader Player"
+    },
+    {
+      "package": "droid.video.download.mastervideos",
+      "title": "Youtube Video Downloader"
+    },
+    {
+      "package": "com.chillimedia.mp3music.downloader",
+      "title": "Chilli Media Mp3 Music Download"
+    },
+    {
+      "package": "com.vidtubemate.downloader",
+      "title": "VidTube YouTube Downloader"
+    },
+    {
+      "package": "com.musicplays.tunesvee",
+      "title": "MyTunes - Free Music"
+    },
+    {
+      "package": "com.freemusicplayerr",
+      "title": "Free Music"
+    },
+    {
+      "package": "com.mp3listenmusic.downloads",
+      "title": "Music Free Downloader"
+    },
+    {
+      "package": "com.thunkable.android.ilyastepanov1.ConcentrationMeditation",
+      "title": "Meditation Plus: music, relax"
+    }
+  ],
+  "versions": [
+    {
+      "version": "9.47.51",
+      "uploaded": "2026-11-21"
+    },
+    {
+      "version": "9.46.55",
+      "uploaded": "2026-11-21"
+    },
+    {
+      "version": "9.46.53",
+      "uploaded": "2026-11-19"
+    },
+    {
+      "version": "9.46.51",
+      "uploaded": "2026-11-17"
+    },
+    {
+      "version": "9.45.51",
+      "uploaded": "2026-11-16"
+    },
+    {
+      "version": "9.44.56",
+      "uploaded": "2026-11-04"
+    },
+    {
+      "version": "9.44.53",
+      "uploaded": "2026-11-07"
+    },
+    {
+      "version": "9.44.52",
+      "uploaded": "2026-11-09"
+    },
+    {
+      "version": "9.43.52",
+      "uploaded": "2026-11-02"
+    },
+    {
+      "version": "9.43.51",
+      "uploaded": "2026-10-30"
+    },
+    {
+      "version": "9.42.53",
+      "uploaded": "2026-10-27"
+    },
+    {
+      "version": "9.42.52",
+      "uploaded": "2026-10-24"
+    },
+    {
+      "version": "9.41.53",
+      "uploaded": "2026-10-20"
+    },
+    {
+      "version": "9.41.52",
+      "uploaded": "2026-11-04"
+    },
+    {
+      "version": "9.40.51",
+      "uploaded": "2026-10-07"
+    },
+    {
+      "version": "9.39.52",
+      "uploaded": "2026-10-03"
+    },
+    {
+      "version": "9.38.52",
+      "uploaded": "2026-09-30"
+    },
+    {
+      "version": "9.38.51",
+      "uploaded": "2026-09-24"
+    },
+    {
+      "version": "9.37.54",
+      "uploaded": "2026-10-27"
+    },
+    {
+      "version": "9.36.51",
+      "uploaded": "2026-09-16"
+    },
+    {
+      "version": "9.36.50",
+      "uploaded": "2026-09-15"
+    },
+    {
+      "version": "9.35.54",
+      "uploaded": "2026-09-05"
+    },
+    {
+      "version": "9.34.53",
+      "uploaded": "2026-09-01"
+    },
+    {
+      "version": "9.34.52",
+      "uploaded": "2026-09-02"
+    },
+    {
+      "version": "9.33.53",
+      "uploaded": "2026-08-25"
+    },
+    {
+      "version": "9.33.52",
+      "uploaded": "2026-08-25"
+    },
+    {
+      "version": "9.32.52",
+      "uploaded": "2026-08-18"
+    },
+    {
+      "version": "9.32.51",
+      "uploaded": "2026-11-13"
+    },
+    {
+      "version": "9.31.56",
+      "uploaded": "2026-08-19"
+    },
+    {
+      "version": "9.31.54",
+      "uploaded": "2026-08-08"
+    },
+    {
+      "version": "9.31.51",
+      "uploaded": "2026-10-04"
+    },
+    {
+      "version": "9.30.53",
+      "uploaded": "2026-08-04"
+    }
+  ],
+  "target": {
+    "url": "https://dw.uptodown.com/dwn/ymOE5TDpdF27k3O8JnlMyAW08VNtdCCZoj9rdW6TXau_evC5OBCLFXgnXp9aQJu3KyLHaGra5IJ_wLQ1gsQpV3cpNKfIsIFQc8p8o2POjKUQ5avUDHrdvP6u7K4pSeTO/-K8L5AP9JRzAbBTiL5RGvqL2rFb2-eII0fESrITJme20z9-4K7C8e6xxhK7WSZ64FUOCAov0lMKMW1q2fpVGCt9kv0XiHJOGwXr6QXlNLkpjeRcXsZV8SbsRG_LPhYdn/74DfHoRmojGg8gF-nXlgtQiM-ZJ7tZ5mEVZeK2nKBOn3d1OBR_p273wVBRUUJF3e6dU8A6JQa7g4BNNcnV9k2SNw5v_9C5K7an7WLpM5rjXIJWDOo7OKzva-IoKSvyzK/mTBFI-s7AmQIMbKGXJPlUA==/",
+    "version": "9.47.51",
+    "arch": "arm64-v8a",
+    "provider": "uptodown",
+    "headers": []
+  }
+}
