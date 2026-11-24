@@ -96,16 +96,11 @@ impl Uptodown {
 
 	/// Request headers with a valid bearer token (fetched on first use).
 	fn headers(&self) -> Result<Vec<(String, String)>> {
-		let cached = self.token.borrow().clone();
-		let token = match cached {
-			Some(t) => t,
-			None => {
-				let t = self.authorize()?;
-				*self.token.borrow_mut() = Some(t.clone());
-				t
-			}
-		};
-		Ok(app_headers(Some(&token)))
+		if self.token.borrow().is_none() {
+			let t = self.authorize()?;
+			*self.token.borrow_mut() = Some(t);
+		}
+		Ok(app_headers(self.token.borrow().as_deref()))
 	}
 
 	/// Runs `f` with auth headers; a 401 drops the token and retries once.
@@ -119,7 +114,8 @@ impl Uptodown {
 		}
 	}
 
-	fn get(&self, url: &Url) -> Result<String> {
+	fn get(&self, path: String) -> Result<String> {
+		let url = Url::from(path);
 		self.authed(|h| self.fetcher.get(url.as_str(), h))
 	}
 
@@ -138,38 +134,23 @@ impl Uptodown {
 	}
 
 	fn resolve(&self, pkg: &str) -> Result<String> {
-		parse::parse_app_id(
-			&self.get(&Url::from(format!("/apps/byPackagename/{}", query(pkg))))?,
-			pkg,
-		)
+		parse::parse_app_id(&self.get(format!("/apps/byPackagename/{pkg}"))?, pkg)
 	}
 
 	/// One list page (`n` from 0). A 404 is an empty list.
 	fn page(&self, id: &str, n: usize) -> Result<Vec<Row>> {
 		self.register()?;
-		let url = Url::from(format!(
+		match self.get(format!(
 			"/v3/app/{id}/device/{}/compatible/versions?page[limit]={PAGE_SIZE}&page[offset]={}\
 			 &lang=en&id_plataforma=13&identifier={}&countryIsoCode=US",
 			self.device,
 			n * PAGE_SIZE,
 			self.device,
-		));
-		match self.get(&url) {
+		)) {
 			Ok(body) => parse::parse_page(&body),
 			Err(ProviderError::NotFound(_)) => Ok(Vec::new()),
 			Err(e) => Err(e),
 		}
-	}
-
-	/// Feeds pages to `visit` until it returns `true`, a page is empty, or `pages` are read.
-	fn walk(&self, id: &str, pages: usize, mut visit: impl FnMut(Vec<Row>) -> bool) -> Result<()> {
-		for n in 0..pages {
-			let rows = self.page(id, n)?;
-			if rows.is_empty() || visit(rows) {
-				break;
-			}
-		}
-		Ok(())
 	}
 }
 
@@ -192,10 +173,10 @@ impl Provider for Uptodown {
 	}
 
 	fn search(&self, q: &str) -> Result<Vec<AppResult>> {
-		parse::parse_search(&self.get(&Url::from(format!(
+		parse::parse_search(&self.get(format!(
 			"/v2/apps/search/{}?page[limit]=30&page[offset]=0&lang=en",
 			query(q)
-		)))?)
+		))?)
 	}
 
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>> {
@@ -207,22 +188,23 @@ impl Provider for Uptodown {
 	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget> {
 		let id = self.resolve(pkg)?;
 		// Latest is on page 1; a pinned version may be anywhere.
+		let pages = if version.is_some() { PAGE_LIMIT } else { 1 };
 		let mut found = None;
-		self.walk(&id, if version.is_some() { PAGE_LIMIT } else { 1 }, |page| {
-			found = parse::pick(&page, version, arch).cloned();
-			found.is_some()
-		})?;
+		for n in 0..pages {
+			let rows = self.page(&id, n)?;
+			if rows.is_empty() {
+				break;
+			}
+			if let Some(r) = parse::pick(&rows, version, arch) {
+				found = Some(r.clone());
+				break;
+			}
+		}
 		let row = found.ok_or_else(|| {
-			ProviderError::no_match(
-				format!("no {arch} build {} for {pkg}", version.unwrap_or("latest")),
-				"uptodown",
-			)
+			ProviderError::NoMatch(format!("no {arch} build {} for {pkg}", version.unwrap_or("latest")))
 		})?;
 
-		let dl = parse::parse_download(&self.get(&Url::from(format!(
-			"/apps/{id}/file/{}/downloadUrl?update=0",
-			row.file_id
-		)))?)?;
+		let dl = parse::parse_download(&self.get(format!("/apps/{id}/file/{}/downloadUrl?update=0", row.file_id))?)?;
 		Ok(DownloadTarget {
 			url: dl.url,
 			version: row.version,

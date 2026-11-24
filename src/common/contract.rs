@@ -120,9 +120,15 @@ bitflags::bitflags! {
 
 impl Arch {
 	/// One ABI label; Apkmirror says `universal` (variants table) or `noarch` (app page).
-	fn single(tok: &str) -> Option<Arch> {
+	fn single(tok: &str) -> Option<Self> {
 		let t = tok.to_ascii_lowercase();
-		Arch::from_name(&t).or_else(|| matches!(t.as_str(), "universal" | "noarch").then(Arch::all))
+		let t = if t == "x86-64" { "x86_64" } else { &t }; // Aptoide spelling
+		Self::from_name(&t).or_else(|| matches!(t, "universal" | "noarch").then(Arch::all))
+	}
+
+	pub fn from_abis<S: AsRef<str>>(abis: impl Iterator<Item = S>) -> Arch {
+		let arch: Arch = abis.filter_map(|s| s.as_ref().parse().ok()).collect();
+		if arch.is_empty() { Arch::all() } else { arch }
 	}
 }
 

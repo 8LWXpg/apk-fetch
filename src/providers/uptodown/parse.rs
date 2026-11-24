@@ -1,10 +1,12 @@
+use std::cmp::Reverse;
+
 use chrono::NaiveDate;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use versions::Versioning;
 
 use crate::common::contract::{AppResult, Arch, ProviderError, Result, VersionInfo};
-use crate::providers::scrape::{parse_date, version_matches};
+use crate::providers::scrape::{newest_first, parse_date, version_matches};
 
 pub type Url = crate::common::contract::Url<super::Uptodown>;
 
@@ -87,6 +89,10 @@ fn json<T: DeserializeOwned>(body: &str) -> Result<T> {
 	serde_json::from_str(body).map_err(|e| ProviderError::parse_error("uptodown json", e))
 }
 
+fn data<T: DeserializeOwned>(body: &str) -> Result<Option<T>> {
+	Ok(json::<Envelope<T>>(body)?.data)
+}
+
 pub fn parse_token(body: &str) -> Result<String> {
 	Ok(json::<TokenResp>(body)?.token)
 }
@@ -132,15 +138,13 @@ pub fn device_json(id: &str) -> String {
 }
 
 pub fn parse_app_id(body: &str, pkg: &str) -> Result<String> {
-	json::<Envelope<Lookup>>(body)?
-		.data
+	data::<Lookup>(body)?
 		.map(|d| d.app_id.to_string())
-		.ok_or_else(|| ProviderError::no_match("no uptodown app", pkg))
+		.ok_or_else(|| ProviderError::no_match("no such app", pkg))
 }
 
 pub fn parse_search(body: &str) -> Result<Vec<AppResult>> {
-	let hits: Vec<AppResult> = json::<Envelope<SearchData>>(body)?
-		.data
+	let hits: Vec<AppResult> = data::<SearchData>(body)?
 		.map(|d| d.results)
 		.unwrap_or_default()
 		.into_iter()
@@ -167,17 +171,10 @@ pub fn parse_download(body: &str) -> Result<Download> {
 	})
 }
 
-/// ABIs the build ships; none listed = runs anywhere.
-fn arch_of<'a>(abis: impl Iterator<Item = &'a String>) -> Arch {
-	let arch: Arch = abis.filter_map(|s| s.parse::<Arch>().ok()).collect();
-	if arch.is_empty() { Arch::all() } else { arch }
-}
-
 /// One list page. Empty `Vec` = past the last page. A bad row fails the page: dropping it
 /// could turn a pinned version into a false "not found".
 pub fn parse_page(body: &str) -> Result<Vec<Row>> {
-	json::<Envelope<Vec<Item>>>(body)?
-		.data
+	data::<Vec<Item>>(body)?
 		.unwrap_or_default()
 		.into_iter()
 		.map(|it| -> Result<Row> {
@@ -189,7 +186,7 @@ pub fn parse_page(body: &str) -> Result<Vec<Row>> {
 				version: it.version.trim().to_string(),
 				file_id: it.file_id,
 				bundle: matches!(it.file_type.to_ascii_lowercase().as_str(), "xapk" | "apks" | "apkm"),
-				arch: arch_of(it.abi.iter().chain(&it.abis)),
+				arch: Arch::from_abis(it.abi.iter().chain(&it.abis)),
 				uploaded,
 			})
 		})
@@ -200,19 +197,21 @@ pub fn parse_page(body: &str) -> Result<Vec<Row>> {
 /// pinned version uses `version_matches`, which never matches a suffixed build by prefix.
 /// Among builds of the winning version: plain APK first, then the fewest ABIs.
 pub fn pick<'a>(rows: &'a [Row], want: Option<&str>, arch: Arch) -> Option<&'a Row> {
-	let fits = || {
-		rows.iter().filter(|r| {
+	rows.iter()
+		.filter(|r| {
 			r.arch.contains(arch)
 				&& match want {
 					Some(w) => version_matches(&r.version, w),
 					None => !r.version.contains('-'),
 				}
 		})
-	};
-	let best = fits().max_by_key(|r| Versioning::new(&r.version))?;
-	fits()
-		.filter(|r| r.version == best.version)
-		.min_by_key(|r| (r.bundle, r.arch.bits().count_ones()))
+		.max_by_key(|r| {
+			(
+				Versioning::new(&r.version),
+				Reverse(r.bundle),
+				Reverse(r.arch.bits().count_ones()),
+			)
+		})
 }
 
 /// One entry per version (a version can list several builds), newest first.
@@ -229,7 +228,7 @@ pub fn into_versions(rows: Vec<Row>) -> Result<Vec<VersionInfo>> {
 	if out.is_empty() {
 		return Err(ProviderError::NoMatch("no versions listed".into()));
 	}
-	out.sort_by(|a, b| Versioning::new(&b.version).cmp(&Versioning::new(&a.version)));
+	newest_first(&mut out, |v| &v.version);
 	Ok(out)
 }
 

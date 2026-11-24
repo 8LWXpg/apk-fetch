@@ -3,6 +3,7 @@
 use chrono::NaiveDate;
 use form_urlencoded::byte_serialize;
 use scraper::Selector;
+use versions::Versioning;
 
 use crate::common::{ProviderError, Result};
 
@@ -44,6 +45,11 @@ pub fn version_token(name: &str) -> String {
 /// `"21.36.45".contains("1.3")` is true and would resolve the wrong build.
 pub fn version_matches(version: &str, want: &str) -> bool {
 	version == want || version.strip_prefix(want).is_some_and(|rest| rest.starts_with('.'))
+}
+
+/// Sort newest version first. `version` extracts the version string from a row.
+pub fn newest_first<T>(rows: &mut [T], version: impl Fn(&T) -> &str) {
+	rows.sort_by(|a, b| Versioning::new(version(b)).cmp(&Versioning::new(version(a))));
 }
 
 #[cfg(test)]

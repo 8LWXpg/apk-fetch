@@ -3,7 +3,6 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::common::contract::{AppResult, Arch, ProviderError, Result};
-use crate::common::ui::error;
 use crate::providers::scrape::parse_date;
 
 pub type Url = crate::common::contract::Url<super::Aptoide>;
@@ -75,18 +74,7 @@ impl App {
 
 	/// ABIs the build ships. Empty `cpus` = runs anywhere.
 	pub fn arch(&self) -> Arch {
-		let arch: Arch = self
-			.file
-			.hardware
-			.cpus
-			.iter()
-			.filter_map(|c| {
-				c.replace("x86-64", "x86_64")
-					.parse::<Arch>()
-					.inspect_err(|e| error!("aptoide: {}: {e}", self.package))
-					.ok()
-			})
-			.collect();
+		let arch = Arch::from_abis(self.file.hardware.cpus.iter());
 		if arch.is_empty() { Arch::all() } else { arch }
 	}
 

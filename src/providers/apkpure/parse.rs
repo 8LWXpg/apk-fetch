@@ -1,12 +1,11 @@
 use chrono::NaiveDate;
 use scraper::CaseSensitivity::CaseSensitive;
 use scraper::{ElementRef, Html};
-use versions::Versioning;
 
 use crate::common::Arch;
 use crate::common::contract::{AppResult, ProviderError, Result};
 use crate::common::ui::error;
-use crate::providers::scrape::{parse_date, sel, text_of};
+use crate::providers::scrape::{newest_first, parse_date, sel, text_of};
 
 pub type Url = crate::common::contract::Url<super::ApkPure>;
 
@@ -143,6 +142,6 @@ pub fn parse_versions(html: &Html) -> Result<Vec<VersionRow>> {
 	if rows.is_empty() {
 		return Err(ProviderError::NoMatch("no versions listed".into()));
 	}
-	rows.sort_by(|a, b| Versioning::new(&b.version).cmp(&Versioning::new(&a.version)));
+	newest_first(&mut rows, |r| &r.version);
 	Ok(rows)
 }
