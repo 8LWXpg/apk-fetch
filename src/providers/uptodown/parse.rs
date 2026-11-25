@@ -27,78 +27,38 @@ pub struct Download {
 	pub sha256: Option<String>,
 }
 
-/// `{"success":1,"data":...}`. `data` is absent on the error shape.
-#[derive(Deserialize)]
-struct Envelope<T> {
-	data: Option<T>,
-}
-
-#[derive(Deserialize)]
-struct Ack {
-	success: u8,
-	#[serde(rename = "errorMsg")]
-	error_msg: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct TokenResp {
-	token: String,
-}
-
-#[derive(Deserialize)]
-struct Lookup {
-	#[serde(rename = "appID")]
-	app_id: u64,
-}
-
-#[derive(Deserialize)]
-struct SearchData {
-	results: Vec<SearchItem>,
-}
-
-#[derive(Deserialize)]
-struct SearchItem {
-	/// This somehow can be null when searching.
-	#[serde(rename = "packageName")]
-	package: Option<String>,
-	name: String,
-}
-
-#[derive(Deserialize)]
-struct DownloadResp {
-	#[serde(rename = "downloadURL")]
-	download_url: String,
-	sha256: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct Item {
-	#[serde(rename = "fileID")]
-	file_id: u64,
-	version: String,
-	#[serde(rename = "lastUpdate")]
-	last_update: String,
-	abi: Option<String>,
-	#[serde(default)]
-	abis: Vec<String>,
-	#[serde(rename = "fileType", default)]
-	file_type: String,
-}
-
 fn json<T: DeserializeOwned>(body: &str) -> Result<T> {
 	serde_json::from_str(body).map_err(|e| ProviderError::parse_error("uptodown json", e))
 }
 
 fn data<T: DeserializeOwned>(body: &str) -> Result<Option<T>> {
+	/// `{"success":1,"data":...}`. `data` is absent on the error shape.
+	#[derive(Deserialize)]
+	struct Envelope<T> {
+		data: Option<T>,
+	}
+
 	Ok(json::<Envelope<T>>(body)?.data)
 }
 
 pub fn parse_token(body: &str) -> Result<String> {
+	#[derive(Deserialize)]
+	struct TokenResp {
+		token: String,
+	}
+
 	Ok(json::<TokenResp>(body)?.token)
 }
 
 /// Reply to the device registration.
 pub fn parse_ack(body: &str) -> Result<()> {
+	#[derive(Deserialize)]
+	struct Ack {
+		success: u8,
+		#[serde(rename = "errorMsg")]
+		error_msg: Option<String>,
+	}
+
 	let ack: Ack = json(body)?;
 	if ack.success == 1 {
 		return Ok(());
@@ -138,12 +98,31 @@ pub fn device_json(id: &str) -> String {
 }
 
 pub fn parse_app_id(body: &str, pkg: &str) -> Result<String> {
+	#[derive(Deserialize)]
+	struct Lookup {
+		#[serde(rename = "appID")]
+		app_id: u64,
+	}
+
 	data::<Lookup>(body)?
 		.map(|d| d.app_id.to_string())
 		.ok_or_else(|| ProviderError::no_match("no such app", pkg))
 }
 
 pub fn parse_search(body: &str) -> Result<Vec<AppResult>> {
+	#[derive(Deserialize)]
+	struct SearchData {
+		results: Vec<SearchItem>,
+	}
+
+	#[derive(Deserialize)]
+	struct SearchItem {
+		/// This somehow can be null when searching.
+		#[serde(rename = "packageName")]
+		package: Option<String>,
+		name: String,
+	}
+
 	let hits: Vec<AppResult> = data::<SearchData>(body)?
 		.map(|d| d.results)
 		.unwrap_or_default()
@@ -162,8 +141,14 @@ pub fn parse_search(body: &str) -> Result<Vec<AppResult>> {
 }
 
 pub fn parse_download(body: &str) -> Result<Download> {
-	let d = json::<Envelope<DownloadResp>>(body)?
-		.data
+	#[derive(Deserialize)]
+	struct DownloadResp {
+		#[serde(rename = "downloadURL")]
+		download_url: String,
+		sha256: Option<String>,
+	}
+
+	let d = data::<DownloadResp>(body)?
 		.ok_or_else(|| ProviderError::ParseError("no `data` in download response".into()))?;
 	Ok(Download {
 		url: d.download_url,
@@ -174,6 +159,20 @@ pub fn parse_download(body: &str) -> Result<Download> {
 /// One list page. Empty `Vec` = past the last page. A bad row fails the page: dropping it
 /// could turn a pinned version into a false "not found".
 pub fn parse_page(body: &str) -> Result<Vec<Row>> {
+	#[derive(Deserialize)]
+	struct Item {
+		#[serde(rename = "fileID")]
+		file_id: u64,
+		version: String,
+		#[serde(rename = "lastUpdate")]
+		last_update: String,
+		abi: Option<String>,
+		#[serde(default)]
+		abis: Vec<String>,
+		#[serde(rename = "fileType", default)]
+		file_type: String,
+	}
+
 	data::<Vec<Item>>(body)?
 		.unwrap_or_default()
 		.into_iter()

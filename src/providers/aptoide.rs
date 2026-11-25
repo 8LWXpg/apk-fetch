@@ -7,6 +7,8 @@
 //! base APK + split APKs and ignores any ABI/device parameter. Stores are user-run, so a build's
 //! signature is not vouched for here; verify it downstream.
 mod parse;
+use std::time::Duration;
+
 use parse::Url;
 
 use crate::common::contract::{
@@ -15,9 +17,17 @@ use crate::common::contract::{
 use crate::common::fetch::HttpFetcher;
 use crate::providers::scrape::{query, version_matches};
 
-#[derive(Default)]
 pub struct Aptoide {
 	fetcher: HttpFetcher,
+}
+
+impl Default for Aptoide {
+	fn default() -> Self {
+		// It's API so shorter or zero delay is possible.
+		Self {
+			fetcher: HttpFetcher::with_delay(Duration::from_millis(100)),
+		}
+	}
 }
 
 impl Aptoide {

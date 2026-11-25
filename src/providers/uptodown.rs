@@ -12,7 +12,7 @@ mod parse;
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, KeyInit, Mac};
 use parse::{Row, Url};
@@ -33,7 +33,7 @@ const PAGE_LIMIT: usize = 100;
 
 pub struct Uptodown {
 	fetcher: HttpFetcher,
-	/// Client id the server knows this run by.
+	/// Identifier for `/auth/token`
 	device: String,
 	token: RefCell<Option<String>>,
 	registered: Cell<bool>,
@@ -41,7 +41,7 @@ pub struct Uptodown {
 
 impl Default for Uptodown {
 	fn default() -> Self {
-		Self::new(HttpFetcher::new())
+		Self::new(HttpFetcher::with_delay(Duration::from_millis(100)))
 	}
 }
 
@@ -142,7 +142,7 @@ impl Uptodown {
 		self.register()?;
 		match self.get(format!(
 			"/v3/app/{id}/device/{}/compatible/versions?page[limit]={PAGE_SIZE}&page[offset]={}\
-			 &lang=en&id_plataforma=13&identifier={}&countryIsoCode=US",
+			 &lang=en&id_plataforma=13&identifier={}",
 			self.device,
 			n * PAGE_SIZE,
 			self.device,

@@ -145,6 +145,12 @@ pub struct HttpFetcher {
 	play: Option<(PathBuf, FixtureFile)>,
 }
 
+impl Default for HttpFetcher {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl HttpFetcher {
 	pub fn new() -> Self {
 		Self::with_delay(THROTTLE_DELAY)
@@ -412,12 +418,6 @@ impl HttpFetcher {
 		let target = PathBuf::from(format!("{}.{ext}", dest.display()));
 		fs::rename(&saved, &target)?;
 		Ok(target)
-	}
-}
-
-impl Default for HttpFetcher {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 
