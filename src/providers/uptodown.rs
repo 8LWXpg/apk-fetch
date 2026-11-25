@@ -9,7 +9,7 @@
 //!                                                       `abis`, `fileType`, `sha256`
 //!   GET  /apps/{id}/file/{fileID}/downloadUrl        -> signed CDN URL + `sha256`
 mod parse;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -26,17 +26,14 @@ use crate::providers::scrape::query;
 
 const HMAC_KEY: &str = "MDGMXUMdvHJBG/vjdFgmqX6LUdy7ecfwvYNd0gyfOCs=";
 const CLIENT_VERSION: &str = "745";
-const TRACKER_URL: &str = "https://t.uptodown.app/eapi/v2/tracker/device";
-/// Builds per list request (what the app asks for).
-const PAGE_SIZE: usize = 50;
-const PAGE_LIMIT: usize = 100;
+const WEB_PAGES: &str = "https://en.uptodown.com/android/apps";
+const PAGE_LIMIT: usize = 10;
 
 pub struct Uptodown {
 	fetcher: HttpFetcher,
 	/// Identifier for `/auth/token`
 	device: String,
 	token: RefCell<Option<String>>,
-	registered: Cell<bool>,
 }
 
 impl Default for Uptodown {
@@ -65,7 +62,6 @@ impl Uptodown {
 			fetcher,
 			device: format!("{:016x}", RandomState::new().build_hasher().finish()),
 			token: RefCell::default(),
-			registered: Cell::new(false),
 		}
 	}
 
@@ -119,38 +115,13 @@ impl Uptodown {
 		self.authed(|h| self.fetcher.get(url.as_str(), h))
 	}
 
-	fn register(&self) -> Result<()> {
-		if self.registered.get() {
-			return Ok(());
-		}
-		let device = parse::device_json(&self.device);
-		let body = self.authed(|h| {
-			self.fetcher
-				.post_urlencoded(TRACKER_URL, h, &[("device", device.as_str())])
-		})?;
-		parse::parse_ack(&body)?;
-		self.registered.set(true);
-		Ok(())
-	}
-
 	fn resolve(&self, pkg: &str) -> Result<String> {
 		parse::parse_app_id(&self.get(format!("/apps/byPackagename/{pkg}"))?, pkg)
 	}
 
-	/// One list page (`n` from 0). A 404 is an empty list.
+	/// One list page (`n` starts from 0), 20 items each. No auth needed.
 	fn page(&self, id: &str, n: usize) -> Result<Vec<Row>> {
-		self.register()?;
-		match self.get(format!(
-			"/v3/app/{id}/device/{}/compatible/versions?page[limit]={PAGE_SIZE}&page[offset]={}\
-			 &lang=en&id_plataforma=13&identifier={}",
-			self.device,
-			n * PAGE_SIZE,
-			self.device,
-		)) {
-			Ok(body) => parse::parse_page(&body),
-			Err(ProviderError::NotFound(_)) => Ok(Vec::new()),
-			Err(e) => Err(e),
-		}
+		parse::parse_page(&self.fetcher.get_text(&format!("{WEB_PAGES}/{id}/versions/{n}"))?)
 	}
 }
 
@@ -181,34 +152,33 @@ impl Provider for Uptodown {
 
 	fn versions(&self, pkg: &str) -> Result<Vec<VersionInfo>> {
 		let id = self.resolve(pkg)?;
-		let rows = self.page(&id, 0)?;
-		parse::into_versions(rows)
+		// Only check for first page
+		parse::into_versions(self.page(&id, 0)?)
 	}
 
-	fn download_url(&self, pkg: &str, version: Option<&str>, arch: Arch) -> Result<DownloadTarget> {
+	fn download_url(&self, pkg: &str, version: Option<&str>, _arch: Arch) -> Result<DownloadTarget> {
 		let id = self.resolve(pkg)?;
 		// Latest is on page 1; a pinned version may be anywhere.
 		let pages = if version.is_some() { PAGE_LIMIT } else { 1 };
 		let mut found = None;
-		for n in 0..pages {
+		for n in 0..=pages {
 			let rows = self.page(&id, n)?;
 			if rows.is_empty() {
 				break;
 			}
-			if let Some(r) = parse::pick(&rows, version, arch) {
+			if let Some(r) = parse::pick(&rows, version) {
 				found = Some(r.clone());
 				break;
 			}
 		}
-		let row = found.ok_or_else(|| {
-			ProviderError::NoMatch(format!("no {arch} build {} for {pkg}", version.unwrap_or("latest")))
-		})?;
+		let row = found
+			.ok_or_else(|| ProviderError::NoMatch(format!("no build {} for {pkg}", version.unwrap_or("latest"))))?;
 
-		let dl = parse::parse_download(&self.get(format!("/apps/{id}/file/{}/downloadUrl?update=0", row.file_id))?)?;
+		let url = parse::parse_download(&self.get(format!("/apps/{id}/file/{}/downloadUrl?update=0", row.file_id))?)?;
 		Ok(DownloadTarget {
-			url: dl.url,
+			url,
 			version: row.version,
-			arch: row.arch,
+			arch: Arch::all(), // Uptodown serves one universal build per version
 			provider: Self::ID,
 			headers: Vec::new(),
 		})
@@ -219,26 +189,17 @@ impl Provider for Uptodown {
 	}
 }
 
-/// Fixture file for each URL the provider fetches. Only list pages 1-2 are recorded.
+/// Fixture file for each URL the provider fetches.
 #[cfg(test)]
 fn fixture_name(url: &str) -> Option<&'static str> {
-	let page = |n: usize| url.contains(&format!("page[offset]={}&", n * PAGE_SIZE));
 	Some(if url.contains("/v2/apps/search/") {
 		"search.json"
-	} else if url.contains("/compatible/versions") {
-		if page(0) {
-			"versions-1.json"
-		} else if page(1) {
-			"versions-2.json"
-		} else {
-			return None;
-		}
+	} else if url.contains("/android/apps/") && url.contains("/versions/") {
+		"versions.json"
 	} else if url.contains("/downloadUrl") {
 		"download.json"
 	} else if url.contains("/byPackagename/") {
 		"lookup.json"
-	} else if url.contains("/tracker/device") {
-		"register.json"
 	} else if url.contains("/auth/token") {
 		"auth.json"
 	} else {
@@ -246,8 +207,7 @@ fn fixture_name(url: &str) -> Option<&'static str> {
 	})
 }
 
-/// `cargo test refresh_fixtures -- --ignored`
-/// Scrub the JWT in `auth.html` and the signed URL in `download.html` before committing.
+/// `cargo test refresh_fixtures -- --ignored --nocapture`
 #[cfg(test)]
 mod refresh {
 	use super::*;

@@ -190,8 +190,7 @@ impl HttpFetcher {
 	/// Read `dir/<name(url)>.html`, mapping the URL exactly as recording did.
 	#[cfg(test)]
 	fn play_body(dir: &Path, name: &FixtureFile, url: &str) -> String {
-		let name = name(url).unwrap_or_else(|| panic!("playback: no fixture mapping for {url}"));
-		let file = dir.join(format!("{name}.html"));
+		let file = dir.join(name(url).unwrap_or_else(|| panic!("playback: no fixture mapping for {url}")));
 		fs::read_to_string(&file).unwrap_or_else(|e| panic!("playback: {}: {e}", file.display()))
 	}
 

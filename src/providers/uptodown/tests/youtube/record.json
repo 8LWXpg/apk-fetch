@@ -13,12 +13,12 @@
       "title": "Youtube Video Downloader"
     },
     {
-      "package": "com.google.android.youtube.tv",
-      "title": "YouTube for Android TV"
-    },
-    {
       "package": "com.sassmoji.bubbledeck.emoji",
       "title": "YouTube Service"
+    },
+    {
+      "package": "com.google.android.apps.youtube.kids",
+      "title": "YouTube Kids"
     },
     {
       "package": "com.google.android.youtube.tvmusic",
@@ -29,6 +29,18 @@
       "title": "YouTube Kids for Android TV"
     },
     {
+      "package": "com.google.android.apps.youtube.unplugged",
+      "title": "YouTube TV"
+    },
+    {
+      "package": "com.google.android.apps.youtube.producer",
+      "title": "YouTube Create"
+    },
+    {
+      "package": "com.google.android.youtube.tv",
+      "title": "YouTube for Android TV"
+    },
+    {
       "package": "com.asinosoft.vpn",
       "title": "YouTube Accelerator"
     },
@@ -37,20 +49,8 @@
       "title": "Youtube Video and Reels Downloader - VidGo"
     },
     {
-      "package": "com.google.android.apps.youtube.producer",
-      "title": "YouTube Create"
-    },
-    {
-      "package": "com.google.android.apps.youtube.unplugged",
-      "title": "YouTube TV"
-    },
-    {
       "package": "com.google.android.apps.youtube.creator",
       "title": "YouTube Studio"
-    },
-    {
-      "package": "com.google.android.apps.youtube.kids",
-      "title": "YouTube Kids"
     },
     {
       "package": "com.jk.tools.booster.player",
@@ -131,6 +131,10 @@
       "uploaded": "2026-11-21"
     },
     {
+      "version": "21.46.524",
+      "uploaded": "2026-11-24"
+    },
+    {
       "version": "21.46.522",
       "uploaded": "2026-11-20"
     },
@@ -152,7 +156,7 @@
     },
     {
       "version": "21.45.82",
-      "uploaded": "2026-11-09"
+      "uploaded": "2026-11-12"
     },
     {
       "version": "21.44.534",
@@ -197,130 +201,10 @@
     {
       "version": "21.41.529",
       "uploaded": "2026-10-16"
-    },
-    {
-      "version": "21.41.527",
-      "uploaded": "2026-10-30"
-    },
-    {
-      "version": "21.41.526",
-      "uploaded": "2026-10-16"
-    },
-    {
-      "version": "21.41.525-EXTENDED",
-      "uploaded": "2026-10-29"
-    },
-    {
-      "version": "21.39.528",
-      "uploaded": "2026-10-27"
-    },
-    {
-      "version": "21.39.524",
-      "uploaded": "2026-10-08"
-    },
-    {
-      "version": "21.39.523",
-      "uploaded": "2026-10-03"
-    },
-    {
-      "version": "21.39.522",
-      "uploaded": "2026-10-02"
-    },
-    {
-      "version": "21.39.522-SECONDARY",
-      "uploaded": "2026-10-04"
-    },
-    {
-      "version": "21.38.130",
-      "uploaded": "2026-09-24"
-    },
-    {
-      "version": "21.38.125",
-      "uploaded": "2026-09-29"
-    },
-    {
-      "version": "21.38.124",
-      "uploaded": "2026-09-24"
-    },
-    {
-      "version": "21.37.44",
-      "uploaded": "2026-09-24"
-    },
-    {
-      "version": "21.37.42-SECONDARY",
-      "uploaded": "2026-09-17"
-    },
-    {
-      "version": "21.36.47",
-      "uploaded": "2026-09-15"
-    },
-    {
-      "version": "21.35.448",
-      "uploaded": "2026-09-10"
-    },
-    {
-      "version": "21.35.446",
-      "uploaded": "2026-09-19"
-    },
-    {
-      "version": "21.35.443",
-      "uploaded": "2026-09-07"
-    },
-    {
-      "version": "21.35.442",
-      "uploaded": "2026-09-02"
-    },
-    {
-      "version": "21.34.248",
-      "uploaded": "2026-09-02"
-    },
-    {
-      "version": "21.34.247",
-      "uploaded": "2026-08-28"
-    },
-    {
-      "version": "21.34.245",
-      "uploaded": "2026-09-12"
-    },
-    {
-      "version": "21.34.244",
-      "uploaded": "2026-08-29"
-    },
-    {
-      "version": "21.34.243",
-      "uploaded": "2026-08-26"
-    },
-    {
-      "version": "21.34.243-SECONDARY",
-      "uploaded": "2026-08-23"
-    },
-    {
-      "version": "21.33.330",
-      "uploaded": "2026-08-28"
-    },
-    {
-      "version": "21.33.326",
-      "uploaded": "2026-08-22"
-    },
-    {
-      "version": "21.33.324",
-      "uploaded": "2026-08-20"
-    },
-    {
-      "version": "21.33.323",
-      "uploaded": "2026-09-05"
-    },
-    {
-      "version": "21.33.322-SECONDARY",
-      "uploaded": "2026-08-16"
-    },
-    {
-      "version": "21.32.9",
-      "uploaded": "2026-08-22"
     }
   ],
   "target": {
-    "url": "https://dw.uptodown.com/dwn/ymOE5TDpdF27k3O8JnlMyAW08VNtdCCZoj9rdW6TXauWKzBCM__PNJ-T4TAXt5Wt27aLrbxtyB6Ql4ZfPen4x1Qnboh4KYG_Jbnec-vKsYRuGl9HvT5HdNbyr17k_TAE/h2TnEqdMOzH4xbWxGJYy1QfFglz-mWBcSBnCt6i3rBwGQ69aqjX60Na6wXouO3bZXtS1Q_OtlhIRBD7Cgm-0fYlVaohs00wKpcXwbd3DDFC_8N5Va1QAmqa0OTEh0m2Y/IKDjghr65NXxOHqkbm--y_ohg93gv2SYWv41IVwREx_WAuggERyor8NbMEmdeF2BBV2AiAYPGEK4refPH9qFAUPhBxPomRzYovKGTefLr_Ty0YtoXvFeBlyAXIfX6aQh/AI7YH_xphp5ftlyyc20etA==/",
+    "url": "https://dw.uptodown.com/dwn/pJWRdDS4eyhrBHkTK9kDERQTiRIi_xbLsEkMLhhduO0ZxpR-Du8uOFhwLITEX87dvjTFVtW8rqUHogbPeAsMAD8UIJhfVLlXXoR2QJGIn0piRr8BcpdIQ5usorjv_A_C/tfiHlPePHlb9_EabzAGsTKohEMtksanXzFsnJ6gQzGPRneVzJLRYSHFokFgp-bS2QS0VLTv0fGM1-6r4xuiXsXru8ibdLp9ZP_l9nwYOcW_CDmBK8apQA8S75JLUroxZ/ETw5tjyhO3_sX8Cqy9P0ege7EZcq3yoRdVs69yr7sSy3FlMYGng_O6ip5afNnYkfUBUixd_7DxSx-z9inpAvn-DcxGqyDAjg1XxKcaUR83DEVouvGPoo7rcxmNJe9GSm/jun202A6xYuyFrb75oRuMw==/",
     "version": "21.46.528",
     "arch": "universal",
     "provider": "uptodown",

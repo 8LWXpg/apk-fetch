@@ -29,16 +29,16 @@
       "title": "Moosic - Youtube music player"
     },
     {
-      "package": "com.haso.yourmusic",
-      "title": "YouRMusic - Youtube music and video downloader"
+      "package": "com.fotoable.free.music",
+      "title": "Free Music for YouTube Music - Music Player"
     },
     {
       "package": "com.music.redtube",
       "title": "RTube"
     },
     {
-      "package": "com.fotoable.free.music",
-      "title": "Free Music for YouTube Music - Music Player"
+      "package": "com.haso.yourmusic",
+      "title": "YouRMusic - Youtube music and video downloader"
     },
     {
       "package": "info.ziko8jp.jpopranking",
@@ -113,8 +113,8 @@
       "title": "Music Free Downloader"
     },
     {
-      "package": "com.thunkable.android.ilyastepanov1.ConcentrationMeditation",
-      "title": "Meditation Plus: music, relax"
+      "package": "com.alternativemusic.musicaalternativagratis",
+      "title": "Alternative Music"
     }
   ],
   "versions": [
@@ -124,7 +124,7 @@
     },
     {
       "version": "9.46.55",
-      "uploaded": "2026-11-21"
+      "uploaded": "2026-11-25"
     },
     {
       "version": "9.46.53",
@@ -169,88 +169,12 @@
     {
       "version": "9.41.53",
       "uploaded": "2026-10-20"
-    },
-    {
-      "version": "9.41.52",
-      "uploaded": "2026-11-04"
-    },
-    {
-      "version": "9.40.51",
-      "uploaded": "2026-10-07"
-    },
-    {
-      "version": "9.39.52",
-      "uploaded": "2026-10-03"
-    },
-    {
-      "version": "9.38.52",
-      "uploaded": "2026-09-30"
-    },
-    {
-      "version": "9.38.51",
-      "uploaded": "2026-09-24"
-    },
-    {
-      "version": "9.37.54",
-      "uploaded": "2026-10-27"
-    },
-    {
-      "version": "9.36.51",
-      "uploaded": "2026-09-16"
-    },
-    {
-      "version": "9.36.50",
-      "uploaded": "2026-09-15"
-    },
-    {
-      "version": "9.35.54",
-      "uploaded": "2026-09-05"
-    },
-    {
-      "version": "9.34.53",
-      "uploaded": "2026-09-01"
-    },
-    {
-      "version": "9.34.52",
-      "uploaded": "2026-09-02"
-    },
-    {
-      "version": "9.33.53",
-      "uploaded": "2026-08-25"
-    },
-    {
-      "version": "9.33.52",
-      "uploaded": "2026-08-25"
-    },
-    {
-      "version": "9.32.52",
-      "uploaded": "2026-08-18"
-    },
-    {
-      "version": "9.32.51",
-      "uploaded": "2026-11-13"
-    },
-    {
-      "version": "9.31.56",
-      "uploaded": "2026-08-19"
-    },
-    {
-      "version": "9.31.54",
-      "uploaded": "2026-08-08"
-    },
-    {
-      "version": "9.31.51",
-      "uploaded": "2026-10-04"
-    },
-    {
-      "version": "9.30.53",
-      "uploaded": "2026-08-04"
     }
   ],
   "target": {
-    "url": "https://dw.uptodown.com/dwn/ymOE5TDpdF27k3O8JnlMyAW08VNtdCCZoj9rdW6TXau_evC5OBCLFXgnXp9aQJu3KyLHaGra5IJ_wLQ1gsQpV3cpNKfIsIFQc8p8o2POjKUQ5avUDHrdvP6u7K4pSeTO/-K8L5AP9JRzAbBTiL5RGvqL2rFb2-eII0fESrITJme20z9-4K7C8e6xxhK7WSZ64FUOCAov0lMKMW1q2fpVGCt9kv0XiHJOGwXr6QXlNLkpjeRcXsZV8SbsRG_LPhYdn/74DfHoRmojGg8gF-nXlgtQiM-ZJ7tZ5mEVZeK2nKBOn3d1OBR_p273wVBRUUJF3e6dU8A6JQa7g4BNNcnV9k2SNw5v_9C5K7an7WLpM5rjXIJWDOo7OKzva-IoKSvyzK/mTBFI-s7AmQIMbKGXJPlUA==/",
+    "url": "https://dw.uptodown.com/dwn/pJWRdDS4eyhrBHkTK9kDERQTiRIi_xbLsEkMLhhduO1a43BAAPY9Tvu9t1DaJBmJv2cuTQYBsirwH2VgMMRcahsQ5Q7dYhr486ZmYM-FtGJhgJuSLFBE0HgKZkjdba1B/zxb7K5gi11NSSWAufdutZp4rXevPDof75FDkTN6kYYaX6w4Mk8yS1tYR2fgM3AWpQNrdJedHAkLz1PHLdSdyl7rmyRs9alm0yakwu9PjpszKtyan1bvdlnSsJu2e08GM/VnytmgC-8tMGIUrrjdS0cEgWBogc2FvpYHbBNhvVoSnUZi2bDGftjThiVulJCN9bekOtsgtaWm-ImuPxpTdH9BCaHgoRvH7yDiSXDTqhE_HsRXk4pmol2W0jqBQ9BlP-/xMosxKB-kIqpsZVJlO_9aA==/",
     "version": "9.47.51",
-    "arch": "arm64-v8a",
+    "arch": "universal",
     "provider": "uptodown",
     "headers": []
   }

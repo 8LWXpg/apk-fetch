@@ -163,7 +163,7 @@ fn fixture_name(url: &str) -> Option<&'static str> {
 	})
 }
 
-/// `cargo test refresh_fixtures -- --ignored`
+/// `cargo test refresh_fixtures -- --ignored --nocapture`
 #[cfg(test)]
 mod refresh {
 	use super::*;
