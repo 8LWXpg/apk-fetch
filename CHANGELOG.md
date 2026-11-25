@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Uptodown: changed API used for versions.
+- Uptodown: reduced default throttle delay between request.
+- Aptoide: reduced default throttle delay between request.
+
 ## 1.4.0
 
 - Added `uptodown` provider.

@@ -15,7 +15,7 @@ use crate::common::ui::no_progress;
 pub const REQUEST_TIMEOUT_SECS: u64 = 30;
 pub const CONNECT_TIMEOUT_SECS: u64 = 20;
 /// Minimum gap between requests from one provider's fetcher.
-pub const THROTTLE_DELAY: Duration = Duration::from_millis(1200);
+pub const THROTTLE_DELAY: Duration = Duration::from_millis(1000);
 pub const MAX_RETRIES: u32 = 3;
 pub const RETRY_BASE_BACKOFF: Duration = Duration::from_millis(500);
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
