@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1
 
 - Uptodown: changed API used for versions.
 - Uptodown: reduced default throttle delay between request.
